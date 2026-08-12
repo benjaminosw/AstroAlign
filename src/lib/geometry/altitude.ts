@@ -1,5 +1,3 @@
-import { greatCircleDistanceKm } from './distance';
-
 const METERS_PER_KM = 1000;
 
 export function targetAltitude(observer: { elevation: number }, target: { elevation: number }, distanceKm: number): number {

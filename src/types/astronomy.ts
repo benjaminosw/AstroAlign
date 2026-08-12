@@ -1,7 +1,9 @@
-export enum AstroObject {
-  Sun = 'Sun',
-  Moon = 'Moon'
-}
+export const ASTRO_OBJECT = {
+  Sun: 'Sun',
+  Moon: 'Moon'
+} as const;
+
+export type AstroObject = (typeof ASTRO_OBJECT)[keyof typeof ASTRO_OBJECT];
 
 export interface GeographicPoint {
   latitude: number;

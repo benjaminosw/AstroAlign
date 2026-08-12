@@ -1,11 +1,11 @@
 import { calculateAlignment } from '../calculateAlignment';
-import { AstroObject } from '../../../types/astronomy';
+import { ASTRO_OBJECT } from '../../../types/astronomy';
 
 describe('calculateAlignment', () => {
   const input = {
     observer: { latitude: 37.7749, longitude: -122.4194, elevation: 0 },
     target: { latitude: 37.8199, longitude: -122.4783, elevation: 0 },
-    object: AstroObject.Sun,
+    object: ASTRO_OBJECT.Sun,
     date: '2025-09-22',
     time: '12:00',
     timeZone: 'America/Los_Angeles',

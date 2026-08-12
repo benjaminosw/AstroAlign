@@ -1,12 +1,18 @@
 function parseLocalDateTime(date: string, time: string): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
   const [year, month, day] = date.split('-').map(Number);
-  const [hour, minute] = time.split(':').map(Number);
+  const parts = time.split(':').map(Number);
 
-  if ([year, month, day, hour, minute].some((value) => !Number.isFinite(value))) {
+  if (parts.length < 2 || parts.length > 3) {
+    throw new Error('Invalid time format');
+  }
+
+  const [hour, minute, second = 0] = parts;
+
+  if ([year, month, day, hour, minute, second].some((value) => !Number.isFinite(value))) {
     throw new Error('Invalid date or time format');
   }
 
-  return { year, month, day, hour, minute, second: 0 };
+  return { year, month, day, hour, minute, second };
 }
 
 function formatDateTimeParts(date: Date, timeZone: string) {
