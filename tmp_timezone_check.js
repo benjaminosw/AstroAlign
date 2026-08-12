@@ -1,0 +1,59 @@
+const Astronomy = require('astronomy-engine');
+const timeZone = 'Asia/Singapore';
+const date = '2026-08-12';
+const time = '19:00';
+function parseLocalDateTime(date, time) {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  return { year, month, day, hour, minute, second: 0 };
+}
+function formatDateTimeParts(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const result = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') result[part.type] = part.value;
+  }
+  return {
+    year: Number(result.year),
+    month: Number(result.month),
+    day: Number(result.day),
+    hour: Number(result.hour),
+    minute: Number(result.minute),
+    second: Number(result.second)
+  };
+}
+function toUtcMillis(fields) {
+  return Date.UTC(fields.year, fields.month - 1, fields.day, fields.hour, fields.minute, fields.second);
+}
+function convertLocalTimeToUtc(date, time, timeZone) {
+  const localFields = parseLocalDateTime(date, time);
+  const targetLocalMillis = toUtcMillis(localFields);
+  let candidateUtcMillis = targetLocalMillis;
+  for (let iteration = 0; iteration < 10; iteration++) {
+    const actualLocalFields = formatDateTimeParts(new Date(candidateUtcMillis), timeZone);
+    const actualLocalMillis = toUtcMillis(actualLocalFields);
+    const delta = targetLocalMillis - actualLocalMillis;
+    if (delta === 0) return new Date(candidateUtcMillis);
+    candidateUtcMillis += delta;
+  }
+  return new Date(candidateUtcMillis);
+}
+const utc = convertLocalTimeToUtc(date, time, timeZone);
+console.log('local', date, time, timeZone);
+console.log('utc', utc.toISOString());
+const obs = new Astronomy.Observer(1.3521, 103.8198, 0);
+const eq = Astronomy.Equator('Sun', utc, obs, true, true);
+const hz = Astronomy.Horizon(utc, obs, eq.ra, eq.dec, 'normal');
+console.log('az', hz.azimuth, 'alt', hz.altitude);
+console.log('utc milliseconds', utc.getTime());
+console.log('Date toString', utc.toString());
