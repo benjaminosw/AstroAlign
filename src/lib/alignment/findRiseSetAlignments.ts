@@ -99,7 +99,6 @@ export async function findRiseSetAlignments(input: FindAlignmentsInput): Promise
         timeZone: input.timeZone,
         timeZoneLabel: metadata.timeZoneLabel,
         score: azimuthError,
-        belowHorizon: event.altitude < 0,
         moonIlluminationPercent: undefined,
         moonDistanceKm: undefined,
         sunDistanceKm: undefined,

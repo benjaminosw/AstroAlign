@@ -8,7 +8,7 @@ export function collectFullMoonInstants(startDate: Date, endDate: Date): Date[] 
   let windowDays = (endDate.getTime() - searchStart.getTime()) / (24 * 60 * 60 * 1000) + 2;
   let nextSearchStart = new Date(searchStart);
 
-  while (true) {
+  while (windowDays > 0) {
     const fullMoon = Astronomy.SearchMoonPhase(FULL_MOON_PHASE, nextSearchStart, windowDays);
     if (!fullMoon) {
       break;

@@ -2,7 +2,7 @@ import type { AlignmentOutput } from '../../types/astronomy';
 import type { FindAlignmentsInput } from './types';
 import { calculateAlignmentAtInstant } from './instantAlignment';
 
-function evaluateInstant(date: Date, input: FindAlignmentsInput): AlignmentOutput {
+async function evaluateInstant(date: Date, input: FindAlignmentsInput): Promise<AlignmentOutput> {
   if (input.alignmentEvaluator) {
     return input.alignmentEvaluator(date);
   }
@@ -30,7 +30,7 @@ export async function refineAlignment(
 
   let left = start.getTime();
   let right = end.getTime();
-  let best: { date: Date; alignment: AlignmentOutput } = { date: centerUtc, alignment: evaluateInstant(centerUtc, input) };
+  let best: { date: Date; alignment: AlignmentOutput } = { date: centerUtc, alignment: await evaluateInstant(centerUtc, input) };
 
   while (right - left > precisionMs) {
     if (input.signal?.aborted) {
@@ -40,14 +40,14 @@ export async function refineAlignment(
     const mid1 = new Date(left + (right - left) / 3);
     const mid2 = new Date(left + (2 * (right - left)) / 3);
 
-    const mid1Result = evaluateInstant(mid1, input);
-    const mid2Result = evaluateInstant(mid2, input);
+    const mid1Result = await evaluateInstant(mid1, input);
+    const mid2Result = await evaluateInstant(mid2, input);
 
-    if (mid1Result.alignment.angularSeparation < best.alignment.angularSeparation) {
+    if (mid1Result.alignment.angularSeparation < best.alignment.alignment.angularSeparation) {
       best = { date: mid1, alignment: mid1Result };
     }
 
-    if (mid2Result.alignment.angularSeparation < best.alignment.angularSeparation) {
+    if (mid2Result.alignment.angularSeparation < best.alignment.alignment.angularSeparation) {
       best = { date: mid2, alignment: mid2Result };
     }
 
@@ -64,14 +64,14 @@ export async function refineAlignment(
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  const leftResult = evaluateInstant(new Date(left), input);
-  const rightResult = evaluateInstant(new Date(right), input);
+  const leftResult = await evaluateInstant(new Date(left), input);
+  const rightResult = await evaluateInstant(new Date(right), input);
 
-  if (leftResult.alignment.angularSeparation < best.alignment.angularSeparation) {
+  if (leftResult.alignment.angularSeparation < best.alignment.alignment.angularSeparation) {
     best = { date: new Date(left), alignment: leftResult };
   }
 
-  if (rightResult.alignment.angularSeparation < best.alignment.angularSeparation) {
+  if (rightResult.alignment.angularSeparation < best.alignment.alignment.angularSeparation) {
     best = { date: new Date(right), alignment: rightResult };
   }
 

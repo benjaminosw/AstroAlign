@@ -13,7 +13,7 @@ export function getBodyHorizontalPosition(
   );
 
   const equatorial = Astronomy.Equator(
-    body,
+    body === 'Sun' ? Astronomy.Body.Sun : Astronomy.Body.Moon,
     datetime,
     astroObserver,
     true,

@@ -24,7 +24,6 @@ export interface AlignmentCandidate extends AlignmentOutput {
   timeZone: string;
   timeZoneLabel: string;
   score: number;
-  belowHorizon: boolean;
   moonIlluminationPercent?: number;
   moonDistanceKm?: number;
   sunDistanceKm?: number;
