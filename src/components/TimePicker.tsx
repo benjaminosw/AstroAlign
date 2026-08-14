@@ -53,10 +53,11 @@ function StepButton({ direction, onPress, label }: { direction: 'up' | 'down'; o
   );
 }
 
-export default function TimePicker({ value, onChange }: { value: string; onChange: (_value: string) => void }) {
+export default function TimePicker({ value, onChange, label }: { value: string; onChange: (_value: string) => void; label?: string }) {
   const parsed = parseTime(value) ?? { hour: 0, minute: 0 };
   const hour = parsed.hour;
   const minute = parsed.minute;
+  const hasValue = value.trim() !== '';
 
   const [draft, setDraft] = useState(value);
   const [editing, setEditing] = useState(false);
@@ -118,7 +119,7 @@ export default function TimePicker({ value, onChange }: { value: string; onChang
   }
 
   return (
-    <div className="mt-2">
+    <div className="mt-2" role="group" aria-label={label}>
       <div
         ref={containerRef}
         className="flex select-none items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2"
@@ -131,7 +132,7 @@ export default function TimePicker({ value, onChange }: { value: string; onChang
             title="Click to type a time"
             className="w-14 rounded-xl bg-slate-800 px-2 py-2 text-2xl font-semibold tabular-nums text-white transition hover:bg-slate-700"
           >
-            {String(hour).padStart(2, '0')}
+            {hasValue ? String(hour).padStart(2, '0') : '--'}
           </button>
           <StepButton direction="down" onPress={() => step('hour', -1)} label="Decrease hour" />
         </div>
@@ -146,7 +147,7 @@ export default function TimePicker({ value, onChange }: { value: string; onChang
             title="Click to type a time"
             className="w-14 rounded-xl bg-slate-800 px-2 py-2 text-2xl font-semibold tabular-nums text-white transition hover:bg-slate-700"
           >
-            {String(minute).padStart(2, '0')}
+            {hasValue ? String(minute).padStart(2, '0') : '--'}
           </button>
           <StepButton direction="down" onPress={() => step('minute', -1)} label="Decrease minute" />
         </div>

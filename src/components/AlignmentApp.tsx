@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react';
 import type { GeographicPoint } from '../types/astronomy';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../lib/constants/defaultCoordinates';
 import { getTimezoneFromCoordinates } from '../lib/timezone/getTimezoneFromCoordinates';
-import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
-import { formatTimezoneLabel } from '../lib/timezone/formatTimezoneLabel';
 import { validateCoordinates as validateCoordinateValues } from '../lib/timezone/validateCoordinates';
 import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
@@ -24,22 +22,6 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
     description: 'Search Sun/Moon rise and set events that align with your target across a date range.'
   }
 ];
-
-function NumberField({ label, fieldValue, onChange, placeholder }: { label: string; fieldValue: string; onChange: (_value: string) => void; placeholder?: string }) {
-  return (
-    <label className="block">
-      <span className="text-sm text-slate-300">{label}</span>
-      <input
-        type="number"
-        value={fieldValue}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        step="any"
-        className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-      />
-    </label>
-  );
-}
 
 export default function AlignmentApp() {
   const [activeTab, setActiveTab] = useState<TabId>('calculate');
@@ -82,10 +64,17 @@ export default function AlignmentApp() {
     setTarget((prev) => ({ ...prev, [field]: Number(value) }));
   }
 
-  const localNow = timeZone ? getLocalDateTimeForTimeZone(timeZone) : null;
-  const formattedTimezone = timeZone && localNow ? formatTimezoneLabel(localNow.date, localNow.time, timeZone) : null;
-
   const activeTabInfo = TABS.find((tab) => tab.id === activeTab) ?? TABS[0];
+
+  const commonProps = {
+    observer,
+    target,
+    timeZone,
+    timeZoneStatus,
+    observerCoordinateError,
+    onObserverChange: handleObserverChange,
+    onTargetChange: handleTargetChange
+  };
 
   return (
     <div className="grid gap-8">
@@ -109,57 +98,7 @@ export default function AlignmentApp() {
         <p className="max-w-md text-sm text-slate-400">{activeTabInfo.description}</p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-xl font-semibold text-white">Observer</h2>
-            {observerCoordinateError ? (
-              <span className="text-xs text-rose-300">{observerCoordinateError}</span>
-            ) : timeZoneStatus === 'loading' ? (
-              <span className="text-xs text-slate-400">Detecting timezone…</span>
-            ) : timeZoneStatus === 'error' ? (
-              <span className="text-xs text-rose-300">Timezone unavailable</span>
-            ) : formattedTimezone ? (
-              <span
-                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-200"
-                title="Automatically detected from observer location"
-              >
-                {formattedTimezone}
-              </span>
-            ) : (
-              <span className="text-xs text-slate-500">Enter valid coordinates to detect timezone</span>
-            )}
-          </div>
-          <NumberField label="Latitude" fieldValue={String(observer.latitude)} onChange={(value) => handleObserverChange('latitude', value)} />
-          <NumberField label="Longitude" fieldValue={String(observer.longitude)} onChange={(value) => handleObserverChange('longitude', value)} />
-          <NumberField label="Elevation (m)" fieldValue={String(observer.elevation)} onChange={(value) => handleObserverChange('elevation', value)} />
-        </section>
-
-        <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-          <h2 className="text-xl font-semibold text-white">Target</h2>
-          <NumberField label="Latitude" fieldValue={String(target.latitude)} onChange={(value) => handleTargetChange('latitude', value)} />
-          <NumberField label="Longitude" fieldValue={String(target.longitude)} onChange={(value) => handleTargetChange('longitude', value)} />
-          <NumberField label="Elevation (m)" fieldValue={String(target.elevation)} onChange={(value) => handleTargetChange('elevation', value)} />
-        </section>
-      </div>
-
-      {activeTab === 'calculate' ? (
-        <AlignmentCalculator
-          observer={observer}
-          target={target}
-          timeZone={timeZone}
-          timeZoneStatus={timeZoneStatus}
-          observerCoordinateError={observerCoordinateError}
-        />
-      ) : (
-        <AlignmentFinder
-          observer={observer}
-          target={target}
-          timeZone={timeZone}
-          timeZoneStatus={timeZoneStatus}
-          observerCoordinateError={observerCoordinateError}
-        />
-      )}
+      {activeTab === 'calculate' ? <AlignmentCalculator {...commonProps} /> : <AlignmentFinder {...commonProps} />}
     </div>
   );
 }
