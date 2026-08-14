@@ -161,8 +161,11 @@ export default function AlignmentFinder({
   const visibleResults = results ? (showMatchesOnly ? results.filter((candidate) => candidate.alignment.withinTolerance) : results) : null;
 
   return (
-    <div data-testid="finder-workspace" className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,8fr)]">
-      <div className="space-y-6 lg:sticky lg:top-8">
+    <div
+      data-testid="finder-workspace"
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,5fr)_minmax(0,8fr)]"
+    >
+      <div className="lg:sticky lg:top-8">
         <LocationInputs
           observer={observer}
           target={target}
@@ -172,7 +175,9 @@ export default function AlignmentFinder({
           onObserverChange={onObserverChange}
           onTargetChange={onTargetChange}
         />
+      </div>
 
+      <div className="lg:sticky lg:top-8">
         <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
           <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Search</h2>
 

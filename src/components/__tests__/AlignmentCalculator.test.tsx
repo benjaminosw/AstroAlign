@@ -128,14 +128,18 @@ describe('AlignmentCalculator workspace', () => {
     expect(screen.getByText('Results will appear here after you calculate.')).toBeTruthy();
   });
 
-  it('uses a two-column desktop layout with inputs before results', () => {
+  it('uses a three-column desktop layout with coordinates, settings, then results', () => {
     render(<Harness />);
 
     const workspace = screen.getByTestId('calculator-workspace');
     expect(workspace.className).toContain('lg:grid-cols-[');
 
     const columns = Array.from(workspace.children) as HTMLElement[];
+    expect(columns).toHaveLength(3);
     expect(within(columns[0]).getByText('Observer')).toBeTruthy();
-    expect(within(columns[1]).getByText('Alignment result')).toBeTruthy();
+    expect(columns[0].className).toContain('lg:sticky');
+    expect(within(columns[1]).getByText('Alignment')).toBeTruthy();
+    expect(columns[1].className).toContain('lg:sticky');
+    expect(within(columns[2]).getByText('Alignment result')).toBeTruthy();
   });
 });
