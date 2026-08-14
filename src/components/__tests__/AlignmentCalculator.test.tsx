@@ -65,13 +65,13 @@ describe('AlignmentCalculator workspace', () => {
     fireEvent.click(calculateButton());
     expect(calculatedButton()).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-15' } });
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
 
     expect(calculatedButton()).toBeNull();
     expect(calculateButton()).toBeTruthy();
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
     expect(screen.getByText('Alignment result')).toBeTruthy();
-    expect(screen.queryByText(/15 Aug 2026/)).toBeNull();
+    expect(screen.queryByText(/1 Jan 2030/)).toBeNull();
   });
 
   it('marks inputs as changed for object, time, tolerance, and coordinate edits', async () => {
@@ -106,14 +106,14 @@ describe('AlignmentCalculator workspace', () => {
     fireEvent.click(calculateButton());
     expect(calculatedButton()).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-15' } });
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
 
     fireEvent.click(calculateButton());
 
     expect(screen.queryByText(/inputs changed/i)).toBeNull();
     expect(calculatedButton()).toBeTruthy();
-    expect(screen.getByText(/15 Aug 2026/)).toBeTruthy();
+    expect(screen.getByText(/1 Jan 2030/)).toBeTruthy();
   });
 
   it('shows an error and does not mark inputs as calculated when calculation fails', () => {

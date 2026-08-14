@@ -7,8 +7,9 @@ import { getTimezoneFromCoordinates } from '../lib/timezone/getTimezoneFromCoord
 import { validateCoordinates as validateCoordinateValues } from '../lib/timezone/validateCoordinates';
 import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
+import FindShootingLocations from './FindShootingLocations';
 
-type TabId = 'calculate' | 'find';
+type TabId = 'calculate' | 'find' | 'shooting';
 
 const TABS: Array<{ id: TabId; label: string; description: string }> = [
   {
@@ -20,6 +21,11 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
     id: 'find',
     label: 'Find alignments',
     description: 'Search Sun/Moon rise and set events that align with your target across a date range.'
+  },
+  {
+    id: 'shooting',
+    label: 'Find shooting locations',
+    description: 'Given a target, date, Sun/Moon and rise/set event, find locations from which to shoot the aligned event.'
   }
 ];
 
@@ -29,8 +35,11 @@ export default function AlignmentApp() {
   const [target, setTarget] = useState<GeographicPoint>(DEFAULT_TARGET);
   const [timeZone, setTimeZone] = useState<string | null>(null);
   const [timeZoneStatus, setTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [targetTimeZone, setTargetTimeZone] = useState<string | null>(null);
+  const [targetTimeZoneStatus, setTargetTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
   const observerCoordinateError = validateCoordinateValues(observer.latitude, observer.longitude);
+  const targetCoordinateError = validateCoordinateValues(target.latitude, target.longitude);
 
   useEffect(() => {
     const error = validateCoordinateValues(observer.latitude, observer.longitude);
@@ -55,6 +64,30 @@ export default function AlignmentApp() {
 
     return () => window.clearTimeout(handler);
   }, [observer.latitude, observer.longitude]);
+
+  useEffect(() => {
+    const error = validateCoordinateValues(target.latitude, target.longitude);
+
+    if (error) {
+      setTargetTimeZoneStatus('idle');
+      setTargetTimeZone(null);
+      return;
+    }
+
+    setTargetTimeZoneStatus('loading');
+    const handler = window.setTimeout(() => {
+      try {
+        const lookup = getTimezoneFromCoordinates(target.latitude, target.longitude);
+        setTargetTimeZone(lookup.timeZone);
+        setTargetTimeZoneStatus('idle');
+      } catch {
+        setTargetTimeZone(null);
+        setTargetTimeZoneStatus('error');
+      }
+    }, 250);
+
+    return () => window.clearTimeout(handler);
+  }, [target.latitude, target.longitude]);
 
   function handleObserverChange(field: keyof GeographicPoint, value: string) {
     setObserver((prev) => ({ ...prev, [field]: Number(value) }));
@@ -98,7 +131,17 @@ export default function AlignmentApp() {
         <p className="max-w-md text-sm text-slate-400">{activeTabInfo.description}</p>
       </div>
 
-      {activeTab === 'calculate' ? <AlignmentCalculator {...commonProps} /> : <AlignmentFinder {...commonProps} />}
+      {activeTab === 'calculate' && <AlignmentCalculator {...commonProps} />}
+      {activeTab === 'find' && <AlignmentFinder {...commonProps} />}
+      {activeTab === 'shooting' && (
+        <FindShootingLocations
+          target={target}
+          targetCoordinateError={targetCoordinateError}
+          timeZone={targetTimeZone}
+          timeZoneStatus={targetTimeZoneStatus}
+          onTargetChange={handleTargetChange}
+        />
+      )}
     </div>
   );
 }

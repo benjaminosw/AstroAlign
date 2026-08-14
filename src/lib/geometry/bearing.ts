@@ -13,3 +13,7 @@ export function initialBearing(lat1: number, lon1: number, lat2: number, lon2: n
 export function normalizeAzimuth(azimuth: number): number {
   return ((azimuth % 360) + 360) % 360;
 }
+
+export function oppositeBearing(bearingDegrees: number): number {
+  return normalizeAzimuth(bearingDegrees + 180);
+}
