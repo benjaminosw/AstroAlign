@@ -8,7 +8,7 @@ import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/ast
 import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
-import LocationInputs from './LocationInputs';
+import LocationEditor from './LocationEditor';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
 
@@ -68,6 +68,7 @@ export default function AlignmentFinder({
   const [lastSearchedInputs, setLastSearchedInputs] = useState<SearchedInputs | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [mapFitId, setMapFitId] = useState(0);
+  const [locationInputError, setLocationInputError] = useState(false);
   const abortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -99,7 +100,20 @@ export default function AlignmentFinder({
 
   const isCurrent = lastSearchedInputs !== null && isDeepEqual(lastSearchedInputs, currentInputs);
 
+  const locationChanged =
+    lastSearchedInputs !== null &&
+    (lastSearchedInputs.observer.latitude !== observer.latitude ||
+      lastSearchedInputs.observer.longitude !== observer.longitude ||
+      lastSearchedInputs.target.latitude !== target.latitude ||
+      lastSearchedInputs.target.longitude !== target.longitude ||
+      lastSearchedInputs.landmarkName !== (landmark?.name ?? null));
+
   async function search() {
+    if (locationInputError) {
+      setError('Enter valid coordinates to search.');
+      return;
+    }
+
     if (observerCoordinateError) {
       setError(observerCoordinateError);
       return;
@@ -203,17 +217,17 @@ export default function AlignmentFinder({
       className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,11fr)]"
     >
       <div className="space-y-6 lg:sticky lg:top-8">
-        <LocationInputs
+        <LocationEditor
           observer={observer}
           target={target}
           landmark={landmark}
           timeZone={timeZone}
           timeZoneStatus={timeZoneStatus}
-          observerCoordinateError={observerCoordinateError}
           onObserverChange={onObserverChange}
           onTargetChange={onTargetChange}
           onSelectLandmark={onSelectLandmark}
           onClearLandmark={onClearLandmark}
+          onInputErrorChange={setLocationInputError}
         />
 
         <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
@@ -345,7 +359,9 @@ export default function AlignmentFinder({
             role="status"
             className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
           >
-            ⚠ Inputs changed — search again to update these results. The map shows the last searched alignment.
+            {locationChanged
+              ? '⚠ Location changed — recalculate alignments. These results were calculated for the previous location.'
+              : '⚠ Inputs changed — search again to update these results. The map shows the last searched alignment.'}
           </div>
         )}
 

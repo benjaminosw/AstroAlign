@@ -62,7 +62,7 @@ Development:
 ## Project structure
 
 - `src/app/` — Next.js pages and root layout
-- `src/components/` — UI components (`AlignmentApp`, `AlignmentCalculator`, `AlignmentFinder`, `AlignmentMap`, `FindShootingLocations`, `ShootingLocationMap`, `ShootingLocationResults`, `SearchRadiusPicker`, `TolerancePicker`, `TimePicker`, `StateButton`, `LocationInputs`, `NumberField`, `LandmarkSearch`, `TargetSelectionMap`, `TargetLocationPicker`)
+- `src/components/` — UI components (`AlignmentApp`, `AlignmentCalculator`, `AlignmentFinder`, `AlignmentMap`, `FindShootingLocations`, `ShootingLocationMap`, `ShootingLocationResults`, `SearchRadiusPicker`, `TolerancePicker`, `TimePicker`, `StateButton`, `CoordinateField`, `LocationEditor`, `LocationMap`, `NumberField`, `LandmarkSearch`, `TargetSelectionMap`, `TargetLocationPicker`)
 - `src/lib/geocoding/` — landmark search abstraction and the Nominatim provider, with a debounced `useLandmarkSearch` hook
 - `src/lib/astronomy/` — Sun/Moon position, rise/set, and lunar phase helpers
 - `src/lib/geometry/` — bearing, distance, angular separation, altitude, destination point, unit conversions

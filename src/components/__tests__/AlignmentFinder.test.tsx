@@ -5,6 +5,38 @@ import AlignmentFinder from '../AlignmentFinder';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
 
+vi.mock('../../lib/geocoding/index', () => ({
+  activeGeocoder: { search: vi.fn() }
+}));
+
+vi.mock('../LocationMap', () => ({
+  __esModule: true,
+  default: (props: {
+    observer: { latitude: number; longitude: number };
+    target: { latitude: number; longitude: number };
+    observerName?: string | null;
+    targetName?: string | null;
+    activeLocation: string;
+    onObserverMove: (_latitude: number, _longitude: number) => void;
+    onTargetMove: (_latitude: number, _longitude: number) => void;
+    onActivate: (_location: string) => void;
+    fitId?: number;
+  }) => (
+    <div
+      data-testid="mock-location-map"
+      data-observer-lat={props.observer.latitude}
+      data-observer-lon={props.observer.longitude}
+      data-target-lat={props.target.latitude}
+      data-target-lon={props.target.longitude}
+      data-active-location={props.activeLocation}
+      data-fit-id={props.fitId ?? 0}
+    >
+      <button onClick={() => props.onObserverMove(1.5, 104.2)}>simulate-observer-move</button>
+      <button onClick={() => props.onTargetMove(2.1, 101.9)}>simulate-target-move</button>
+    </div>
+  )
+}));
+
 vi.mock('../AlignmentMap', () => ({
   __esModule: true,
   default: (props: {
@@ -207,6 +239,25 @@ describe('AlignmentFinder workspace', () => {
       }
       expect(items.filter((item) => item.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
     }
+  });
+
+  it('marks results stale when the location changes and keeps the previous results visible', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.click(findButton());
+    await screen.findByText(/alignments? found/i, {}, { timeout: 5000 });
+    const map = await waitForMap();
+    const azimuthBefore = map.getAttribute('data-object-azimuth');
+
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+
+    expect(screen.getByText(/location changed/i)).toBeTruthy();
+    expect(screen.queryByText(/inputs changed/i)).toBeNull();
+    expect(findButton()).toBeTruthy();
+    expect(resultItems().length).toBeGreaterThan(0);
+    expect(mapElement().getAttribute('data-object-azimuth')).toBe(azimuthBefore);
+    expect(mapElement().getAttribute('data-observer-lat')).toBe(String(DEFAULT_OBSERVER.latitude));
   });
 
   it('shows a validation error and does not search when coordinates are invalid', () => {

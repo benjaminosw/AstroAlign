@@ -1,16 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { calculateAlignment, AlignmentResult } from '../lib/alignment/calculateAlignment';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
-import LocationInputs from './LocationInputs';
+import LocationEditor from './LocationEditor';
 import TimePicker from './TimePicker';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
+
+const AUTO_CALC_DEBOUNCE_MS = 200;
 
 const AlignmentMap = dynamic(() => import('./AlignmentMap'), {
   ssr: false,
@@ -77,6 +79,11 @@ export default function AlignmentCalculator({
   const [error, setError] = useState<string | null>(null);
   const [lastCalculatedInputs, setLastCalculatedInputs] = useState<CalculatedInputs | null>(null);
   const [mapFitId, setMapFitId] = useState(0);
+  const [autoUpdating, setAutoUpdating] = useState(false);
+  const [autoError, setAutoError] = useState<string | null>(null);
+  const [locationInputError, setLocationInputError] = useState(false);
+  const autoCalcTimerRef = useRef<number | null>(null);
+  const autoCalcVersionRef = useRef(0);
 
   useEffect(() => {
     if (date !== null && time !== null) {
@@ -105,7 +112,60 @@ export default function AlignmentCalculator({
 
   const isCurrent = lastCalculatedInputs !== null && isDeepEqual(lastCalculatedInputs, currentInputs);
 
+  useEffect(() => {
+    if (lastCalculatedInputs === null) {
+      return;
+    }
+    if (locationInputError || observerCoordinateError) {
+      return;
+    }
+    if (timeZoneStatus === 'loading' || !timeZone) {
+      return;
+    }
+    if (!date || !time) {
+      return;
+    }
+
+    const version = ++autoCalcVersionRef.current;
+    setAutoUpdating(true);
+
+    if (autoCalcTimerRef.current !== null) {
+      window.clearTimeout(autoCalcTimerRef.current);
+    }
+    autoCalcTimerRef.current = window.setTimeout(() => {
+      autoCalcTimerRef.current = null;
+      if (version !== autoCalcVersionRef.current) {
+        return;
+      }
+      try {
+        const result = calculateAlignment({ observer, target, object, date, time, timeZone, toleranceDegrees });
+        setSnapshot({ result, object, date, time, toleranceDegrees, landmarkName: landmark?.name ?? null });
+        setLastCalculatedInputs(currentInputs);
+        setMapFitId((id) => id + 1);
+        setError(null);
+        setAutoError(null);
+      } catch (exception) {
+        setAutoError((exception as Error).message);
+      } finally {
+        setAutoUpdating(false);
+      }
+    }, AUTO_CALC_DEBOUNCE_MS);
+
+    return () => {
+      if (autoCalcTimerRef.current !== null) {
+        window.clearTimeout(autoCalcTimerRef.current);
+        autoCalcTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [observer.latitude, observer.longitude, target.latitude, target.longitude]);
+
   function submit() {
+    if (locationInputError) {
+      setError('Enter valid coordinates to calculate alignment.');
+      return;
+    }
+
     if (observerCoordinateError) {
       setError(observerCoordinateError);
       return;
@@ -126,12 +186,20 @@ export default function AlignmentCalculator({
       return;
     }
 
+    if (autoCalcTimerRef.current !== null) {
+      window.clearTimeout(autoCalcTimerRef.current);
+      autoCalcTimerRef.current = null;
+    }
+    autoCalcVersionRef.current += 1;
+    setAutoUpdating(false);
+
     try {
       const result = calculateAlignment({ observer, target, object, date, time, timeZone, toleranceDegrees });
       setSnapshot({ result, object, date, time, toleranceDegrees, landmarkName: landmark?.name ?? null });
       setLastCalculatedInputs(currentInputs);
       setMapFitId((id) => id + 1);
       setError(null);
+      setAutoError(null);
     } catch (exception) {
       setError((exception as Error).message);
     }
@@ -140,24 +208,33 @@ export default function AlignmentCalculator({
   return (
     <div
       data-testid="calculator-workspace"
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,5fr)_minmax(0,8fr)]"
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
     >
       <div className="lg:sticky lg:top-8">
-        <LocationInputs
+        <LocationEditor
           observer={observer}
           target={target}
           landmark={landmark}
           timeZone={timeZone}
           timeZoneStatus={timeZoneStatus}
-          observerCoordinateError={observerCoordinateError}
           onObserverChange={onObserverChange}
           onTargetChange={onTargetChange}
           onSelectLandmark={onSelectLandmark}
           onClearLandmark={onClearLandmark}
+          onInputErrorChange={setLocationInputError}
+          actions={
+            <StateButton
+              state={isCurrent ? 'current' : 'needsAction'}
+              onClick={submit}
+              needsActionLabel="Calculate alignment"
+              currentLabel="✓ Calculated"
+              testId="calculate-button"
+            />
+          }
         />
       </div>
 
-      <div className="lg:sticky lg:top-8">
+      <div className="space-y-6">
         <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
           <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment</h2>
 
@@ -200,34 +277,44 @@ export default function AlignmentCalculator({
             </label>
             <TolerancePicker id="calculate-tolerance" value={toleranceDegrees} onChange={setToleranceDegrees} />
           </div>
-
-          <StateButton
-            state={isCurrent ? 'current' : 'needsAction'}
-            onClick={submit}
-            needsActionLabel="Calculate alignment"
-            currentLabel="✓ Calculated"
-            testId="calculate-button"
-          />
         </section>
-      </div>
 
-      <section className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Alignment result</p>
-        </div>
-
-        {snapshot && !isCurrent && (
-          <div
-            role="status"
-            className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
-          >
-            ⚠ Inputs changed — recalculate to update this result. The map shows the last calculated alignment.
+        <section className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Alignment result</p>
           </div>
-        )}
 
-        {error && (
-          <div className="mt-3 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200">{error}</div>
-        )}
+          {snapshot && !isCurrent && (
+            <div
+              role="status"
+              className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
+            >
+              ⚠ Inputs changed — recalculate to update this result. The map shows the last calculated alignment.
+            </div>
+          )}
+
+          {autoUpdating && snapshot && (
+            <div
+              role="status"
+              data-testid="auto-updating"
+              className="mt-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm font-medium text-sky-300"
+            >
+              Updating alignment…
+            </div>
+          )}
+
+          {autoError && snapshot && (
+            <div
+              role="status"
+              className="mt-3 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200"
+            >
+              ⚠ Unable to update alignment — {autoError}. Previous result shown below.
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-3 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200">{error}</div>
+          )}
 
         {snapshot ? (
           <div>
@@ -322,7 +409,8 @@ export default function AlignmentCalculator({
         ) : (
           <p className="mt-4 text-sm text-slate-500">Results will appear here after you calculate.</p>
         )}
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

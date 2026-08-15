@@ -10,6 +10,39 @@ vi.mock('../../lib/geocoding/index', () => ({
   activeGeocoder: { search: vi.fn() }
 }));
 
+vi.mock('../../lib/alignment/calculateAlignment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/alignment/calculateAlignment')>();
+  return { ...actual, calculateAlignment: vi.fn(actual.calculateAlignment) };
+});
+
+vi.mock('../LocationMap', () => ({
+  __esModule: true,
+  default: (props: {
+    observer: { latitude: number; longitude: number };
+    target: { latitude: number; longitude: number };
+    observerName?: string | null;
+    targetName?: string | null;
+    activeLocation: string;
+    onObserverMove: (_latitude: number, _longitude: number) => void;
+    onTargetMove: (_latitude: number, _longitude: number) => void;
+    onActivate: (_location: string) => void;
+    fitId?: number;
+  }) => (
+    <div
+      data-testid="mock-location-map"
+      data-observer-lat={props.observer.latitude}
+      data-observer-lon={props.observer.longitude}
+      data-target-lat={props.target.latitude}
+      data-target-lon={props.target.longitude}
+      data-active-location={props.activeLocation}
+      data-fit-id={props.fitId ?? 0}
+    >
+      <button onClick={() => props.onObserverMove(1.5, 104.2)}>simulate-observer-move</button>
+      <button onClick={() => props.onTargetMove(2.1, 101.9)}>simulate-target-move</button>
+    </div>
+  )
+}));
+
 vi.mock('../AlignmentMap', () => ({
   __esModule: true,
   default: (props: {
@@ -45,6 +78,7 @@ vi.mock('../AlignmentMap', () => ({
 }));
 
 import { activeGeocoder } from '../../lib/geocoding/index';
+import { calculateAlignment } from '../../lib/alignment/calculateAlignment';
 
 function Harness() {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
@@ -192,19 +226,20 @@ describe('AlignmentCalculator workspace', () => {
     expect(screen.getByText('Results will appear here after you calculate.')).toBeTruthy();
   });
 
-  it('uses a three-column desktop layout with coordinates, settings, then results', () => {
+  it('uses a two-column desktop layout with the location editor on the left and results on the right', () => {
     render(<Harness />);
 
     const workspace = screen.getByTestId('calculator-workspace');
     expect(workspace.className).toContain('lg:grid-cols-[');
 
     const columns = Array.from(workspace.children) as HTMLElement[];
-    expect(columns).toHaveLength(3);
+    expect(columns).toHaveLength(2);
+    expect(within(columns[0]).getByText('Location')).toBeTruthy();
     expect(within(columns[0]).getByText('Observer')).toBeTruthy();
+    expect(within(columns[0]).getByText('Target')).toBeTruthy();
     expect(columns[0].className).toContain('lg:sticky');
     expect(within(columns[1]).getByText('Alignment')).toBeTruthy();
-    expect(columns[1].className).toContain('lg:sticky');
-    expect(within(columns[2]).getByText('Alignment result')).toBeTruthy();
+    expect(within(columns[1]).getByText('Alignment result')).toBeTruthy();
   });
 
   it('marks the calculation as stale when a landmark is selected', async () => {
@@ -302,6 +337,146 @@ describe('AlignmentCalculator workspace', () => {
 
     expect(mapProp('data-target-name')).toBe('Marina Bay Sands');
     expect(mapProp('data-target-lat')).toBe('1.2834');
+    vi.useRealTimers();
+  });
+
+  it('auto-recalculates once with the latest location after a debounce when coordinates change', async () => {
+    vi.useFakeTimers();
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calculatedButton()).toBeTruthy();
+    const fitBefore = Number(mapProp('data-fit-id'));
+
+    const observerLatitude = screen.getAllByLabelText('Latitude')[0];
+    fireEvent.change(observerLatitude, { target: { value: '1.5' } });
+    fireEvent.change(observerLatitude, { target: { value: '1.9' } });
+    fireEvent.change(observerLatitude, { target: { value: '2.0' } });
+    expect(calculatedButton()).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(calculatedButton()).toBeTruthy();
+    expect(mapProp('data-fit-id')).toBe(String(fitBefore + 1));
+    expect(mapProp('data-observer-lat')).toBe('2');
+    vi.useRealTimers();
+  });
+
+  it('uses only the latest location when coordinates change quickly during auto-recalculation', async () => {
+    vi.useFakeTimers();
+    vi.mocked(calculateAlignment).mockClear();
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    const observerLatitude = screen.getAllByLabelText('Latitude')[0];
+    fireEvent.change(observerLatitude, { target: { value: '1.5' } });
+    fireEvent.change(observerLatitude, { target: { value: '1.7' } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(vi.mocked(calculateAlignment).mock.calls.length).toBe(2);
+    expect(vi.mocked(calculateAlignment).mock.calls[1][0].observer.latitude).toBe(1.7);
+    expect(calculatedButton()).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('does not auto-recalculate until the first manual calculation', async () => {
+    vi.useFakeTimers();
+    render(<Harness />);
+
+    const callsBefore = vi.mocked(calculateAlignment).mock.calls.length;
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(vi.mocked(calculateAlignment).mock.calls.length).toBe(callsBefore);
+    expect(calculatedButton()).toBeNull();
+    expect(screen.getByText('Results will appear here after you calculate.')).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('manual recalculation cancels a pending auto-recalculation', async () => {
+    vi.useFakeTimers();
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const callsBefore = vi.mocked(calculateAlignment).mock.calls.length;
+    const fitBefore = Number(mapProp('data-fit-id'));
+
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    fireEvent.click(calculateButton());
+
+    expect(calculatedButton()).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(vi.mocked(calculateAlignment).mock.calls.length).toBe(callsBefore + 1);
+    expect(mapProp('data-fit-id')).toBe(String(fitBefore + 1));
+    vi.useRealTimers();
+  });
+
+  it('keeps the previous result and shows a failure banner when auto-recalculation fails', async () => {
+    vi.useFakeTimers();
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calculatedButton()).toBeTruthy();
+
+    vi.mocked(calculateAlignment).mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.getByText(/unable to update alignment/i)).toBeTruthy();
+    expect(screen.getByText(/boom/i)).toBeTruthy();
+    expect(calculatedButton()).toBeNull();
+    expect(screen.getByText(/inputs changed/i)).toBeTruthy();
+    expect(screen.getByText('Alignment result')).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('shows an updating indicator while an auto-recalculation is pending', async () => {
+    vi.useFakeTimers();
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+
+    expect(screen.getByTestId('auto-updating')).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.queryByTestId('auto-updating')).toBeNull();
     vi.useRealTimers();
   });
 });
