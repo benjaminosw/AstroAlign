@@ -80,7 +80,8 @@ function candidate(
   phaseName: string,
   localDate: string,
   localTime: string,
-  utcInstant: string
+  utcInstant: string,
+  withinTolerance: boolean = true
 ): AlignmentCandidate {
   const phase = PHASES[phaseName];
   return {
@@ -96,7 +97,7 @@ function candidate(
     moonIlluminationPercent: phase.illuminationPercent,
     object: { azimuth: 77, altitude: 0 },
     target: { bearing: 76, distanceKm: 10, altitude: 0 },
-    alignment: { angularSeparation: 0.5, azimuthDelta: 0.5, altitudeDelta: 0, withinTolerance: true }
+    alignment: { angularSeparation: 0.5, azimuthDelta: 0.5, altitudeDelta: 0, withinTolerance }
   };
 }
 
@@ -283,6 +284,36 @@ describe('AlignmentFinder result filters', () => {
     expect(countText()).toBe('6 alignments found · 3 shown');
     const times = resultItems().map((item) => item.children[3].textContent);
     expect(times).toEqual(['20:00:00', '20:30:00', '23:00:00']);
+    expect(vi.mocked(findAlignments)).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts only within-tolerance alignments as found and shown', async () => {
+    const mixed = [
+      candidate('Full Moon', '2025-09-20', '19:00:00', '2025-09-20T11:00:00Z', true),
+      candidate('Full Moon', '2025-09-20', '20:00:00', '2025-09-20T12:00:00Z', true),
+      candidate('Waxing Gibbous', '2025-09-20', '20:30:00', '2025-09-20T12:30:00Z', true),
+      candidate('New Moon', '2025-09-21', '23:00:00', '2025-09-21T15:00:00Z', true),
+      candidate('Waning Crescent', '2025-09-21', '05:30:00', '2025-09-20T21:30:00Z', true),
+      candidate('Full Moon', '2025-09-20', '12:00:00', '2025-09-20T04:00:00Z', false),
+      candidate('Full Moon', '2025-09-20', '18:00:00', '2025-09-20T10:00:00Z', false)
+    ];
+    vi.mocked(findAlignments).mockResolvedValue(mixed);
+    render(<Harness />);
+    await searchMoon();
+
+    expect(countText()).toBe('5 alignments');
+    expect(resultItems()).toHaveLength(5);
+
+    setMoonPhaseFilter('Waxing Gibbous', false);
+    expect(countText()).toBe('5 alignments found · 4 shown');
+    expect(resultItems()).toHaveLength(4);
+
+    setMoonPhaseFilter('New Moon', false);
+    setMoonPhaseFilter('Waning Crescent', false);
+    expect(countText()).toBe('5 alignments found · 2 shown');
+    for (const item of resultItems()) {
+      expect(item.textContent).toContain('✓');
+    }
     expect(vi.mocked(findAlignments)).toHaveBeenCalledTimes(1);
   });
 

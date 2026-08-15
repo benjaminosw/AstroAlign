@@ -76,7 +76,6 @@ export default function AlignmentFinder({
   const [endDate, setEndDate] = useState<string | null>(null);
   const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
   const [activeMarker, setActiveMarker] = useState<'observer' | 'target'>('observer');
-  const [showMatchesOnly, setShowMatchesOnly] = useState(true);
   const [fullMoonOnly, setFullMoonOnly] = useState(false);
   const [timeFilter, setTimeFilter] = useState<TimeFilterOption>('any');
   const [customStartTime, setCustomStartTime] = useState('18:00');
@@ -196,13 +195,9 @@ export default function AlignmentFinder({
         return a.localTime.localeCompare(b.localTime);
       });
 
-      const firstVisibleIndex = showMatchesOnly
-        ? sorted.findIndex((candidate) => candidate.alignment.withinTolerance)
-        : 0;
-
       setAllAlignmentResults(sorted);
       setLastSearchedInputs({ ...currentInputs, landmarkName: landmark?.name ?? null });
-      setSelectedIndex(firstVisibleIndex >= 0 ? firstVisibleIndex : null);
+      setSelectedIndex(sorted.some((candidate) => candidate.alignment.withinTolerance) ? 0 : null);
       setStatus('completed');
     } catch (searchError) {
       setError((searchError as Error).message === 'Search canceled' ? 'Search canceled.' : (searchError as Error).message);
@@ -218,17 +213,24 @@ export default function AlignmentFinder({
 
   const searchedObject = lastSearchedInputs?.object ?? object;
 
-  const filteredByMoonFilters = useMemo(() => {
+  const withinToleranceResults = useMemo(() => {
     if (allAlignmentResults === null) {
       return null;
     }
-    return filterAlignmentResults(allAlignmentResults, {
+    return allAlignmentResults.filter((candidate) => candidate.alignment.withinTolerance);
+  }, [allAlignmentResults]);
+
+  const filteredByMoonFilters = useMemo(() => {
+    if (withinToleranceResults === null) {
+      return null;
+    }
+    return filterAlignmentResults(withinToleranceResults, {
       moonPhases: searchedObject === ASTRO_OBJECT.Moon ? selectedMoonPhases : null,
       timeFilter: searchedObject === ASTRO_OBJECT.Moon ? timeFilter : 'any',
       customStartTime,
       customEndTime
     });
-  }, [allAlignmentResults, searchedObject, selectedMoonPhases, timeFilter, customStartTime, customEndTime]);
+  }, [withinToleranceResults, searchedObject, selectedMoonPhases, timeFilter, customStartTime, customEndTime]);
 
   const fullMoonInstants = useMemo(() => {
     if (!fullMoonOnly || searchedObject !== ASTRO_OBJECT.Moon || !timeZone || !lastSearchedInputs) {
@@ -251,17 +253,14 @@ export default function AlignmentFinder({
     if (fullMoonOnly && searchedObject === ASTRO_OBJECT.Moon) {
       list = list.filter((candidate) => isWithinFullMoonWindow(new Date(candidate.utcInstant), fullMoonInstants));
     }
-    if (showMatchesOnly) {
-      list = list.filter((candidate) => candidate.alignment.withinTolerance);
-    }
     return list;
-  }, [filteredByMoonFilters, fullMoonOnly, fullMoonInstants, showMatchesOnly, searchedObject]);
+  }, [filteredByMoonFilters, fullMoonOnly, fullMoonInstants, searchedObject]);
 
   const filtersActive =
     searchedObject === ASTRO_OBJECT.Moon &&
     (timeFilter !== 'any' || fullMoonOnly || selectedMoonPhases.length !== ALL_MOON_PHASES.length);
 
-  const totalCount = allAlignmentResults?.length ?? 0;
+  const totalCount = withinToleranceResults?.length ?? 0;
   const shownCount = visibleResults?.length ?? 0;
 
   function resetFilters() {
@@ -507,16 +506,6 @@ export default function AlignmentFinder({
               </p>
             </div>
 
-            <label className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={showMatchesOnly}
-                onChange={(event) => setShowMatchesOnly(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
-              />
-              Show only matches within tolerance
-            </label>
-
             <div className="flex flex-wrap items-start gap-4">
               <StateButton
                 state={isCurrent ? 'current' : 'needsAction'}
@@ -584,7 +573,7 @@ export default function AlignmentFinder({
             status !== 'running' ? (
               <p className="mt-4 text-sm text-slate-500">Results will appear here after you search.</p>
             ) : null
-          ) : allAlignmentResults.length === 0 ? (
+          ) : allAlignmentResults.length === 0 || withinToleranceResults === null || withinToleranceResults.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">No alignments found within the selected range and tolerance.</p>
           ) : searchedObject === ASTRO_OBJECT.Moon && selectedMoonPhases.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">

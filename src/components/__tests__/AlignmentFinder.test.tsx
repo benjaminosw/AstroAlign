@@ -5,6 +5,8 @@ import AlignmentFinder from '../AlignmentFinder';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
 import { isTimeWithinWindow } from '../../lib/alignment/timeFilter';
+import { ASTRO_OBJECT } from '../../types/astronomy';
+import type { AlignmentCandidate } from '../../lib/alignment/types';
 import type { SelectedLandmark } from '../../lib/geocoding/types';
 
 vi.mock('../../lib/geocoding/index', () => ({
@@ -12,6 +14,12 @@ vi.mock('../../lib/geocoding/index', () => ({
 }));
 
 import { activeGeocoder } from '../../lib/geocoding/index';
+
+vi.mock('../../lib/alignment/findAlignments', () => ({
+  findAlignments: vi.fn()
+}));
+
+import { findAlignments } from '../../lib/alignment/findAlignments';
 
 vi.mock('../WorkspaceMap', () => ({
   __esModule: true,
@@ -63,6 +71,60 @@ vi.mock('../WorkspaceMap', () => ({
     </div>
   )
 }));
+
+function sunCandidate(
+  localDate: string,
+  localTime: string,
+  utcInstant: string,
+  withinTolerance: boolean,
+  eventType: 'rise' | 'set' = 'rise'
+): AlignmentCandidate {
+  return {
+    utcInstant,
+    eventType,
+    eventLabel: eventType === 'rise' ? 'Sunrise' : 'Sunset',
+    localDate,
+    localTime,
+    timeZone: 'Asia/Singapore',
+    timeZoneLabel: 'SGT',
+    score: 0.5,
+    object: { azimuth: 80, altitude: 0 },
+    target: { bearing: 79, distanceKm: 10, altitude: 0 },
+    alignment: { angularSeparation: 0.5, azimuthDelta: 0.5, altitudeDelta: 0, withinTolerance }
+  };
+}
+
+function moonCandidate(
+  localDate: string,
+  localTime: string,
+  utcInstant: string,
+  phaseName: string,
+  withinTolerance: boolean
+): AlignmentCandidate {
+  const phase = { name: phaseName, emoji: '🌕', phaseAngle: 180, illuminationPercent: 100 };
+  return {
+    ...sunCandidate(localDate, localTime, utcInstant, withinTolerance),
+    moonPhase: phase,
+    moonIlluminationPercent: phase.illuminationPercent
+  };
+}
+
+const SUN_CANDIDATES = [
+  sunCandidate('2026-08-15', '06:00:00', '2026-08-14T22:00:00Z', true, 'rise'),
+  sunCandidate('2026-08-15', '18:30:00', '2026-08-15T10:30:00Z', true, 'set'),
+  sunCandidate('2026-08-16', '06:01:00', '2026-08-15T22:01:00Z', true, 'rise'),
+  sunCandidate('2026-08-15', '18:45:00', '2026-08-15T10:45:00Z', false, 'set'),
+  sunCandidate('2026-08-16', '06:05:00', '2026-08-15T22:05:00Z', false, 'rise')
+];
+
+const MOON_CANDIDATES = [
+  moonCandidate('2025-09-20', '19:00:00', '2025-09-20T11:00:00Z', 'Full Moon', true),
+  moonCandidate('2025-09-20', '20:30:00', '2025-09-20T12:30:00Z', 'Waxing Gibbous', true),
+  moonCandidate('2025-09-21', '05:30:00', '2025-09-20T21:30:00Z', 'Waning Crescent', true),
+  moonCandidate('2025-09-21', '23:00:00', '2025-09-21T15:00:00Z', 'New Moon', true),
+  moonCandidate('2025-09-20', '12:00:00', '2025-09-20T04:00:00Z', 'Waxing Gibbous', true),
+  moonCandidate('2025-09-20', '19:30:00', '2025-09-20T11:30:00Z', 'Full Moon', false)
+];
 
 function Harness() {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
@@ -137,6 +199,14 @@ function eventLabelOf(item: HTMLElement) {
 }
 
 describe('AlignmentFinder workspace', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(findAlignments).mockImplementation(async (input) => {
+      const list = input.object === ASTRO_OBJECT.Moon ? MOON_CANDIDATES : SUN_CANDIDATES;
+      return [...list];
+    });
+  });
+
   it('starts in needs-search state with a bright button and placeholder results', () => {
     render(<Harness />);
 
@@ -150,8 +220,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('shows compact results, marks inputs as searched, and auto-selects the first result on the map', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
 
     await waitForResults();
@@ -178,8 +246,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('renders each result row with arrow, event, dd/mm/yyyy date, time, and error', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
 
@@ -203,8 +269,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('marks inputs as changed after a search while keeping the previous results and map visible', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
     const map = await waitForMap();
@@ -249,8 +313,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('passes the selected event azimuth to the map as the sun direction', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
     const map = await waitForMap();
@@ -262,8 +324,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('updates the map to the selected result without moving the viewport', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
     const map = await waitForMap();
@@ -284,8 +344,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('does not move the viewport when a marker is dragged after a search', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
     await waitForMap();
@@ -299,31 +357,21 @@ describe('AlignmentFinder workspace', () => {
     expect(screen.getByText(/location changed/i)).toBeTruthy();
   });
 
-  it('filters the results to matches within tolerance when the toggle is on', async () => {
+  it('shows only alignments within tolerance', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
-    expect(foundCountText()).toBeGreaterThanOrEqual(2);
-    expect(resultItems()).toHaveLength(foundCountText());
+    expect(foundCountText()).toBeGreaterThanOrEqual(1);
 
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
-
-    const filteredCount = foundCountText();
-    if (filteredCount === 0) {
-      expect(screen.getByText(/no results match the current filters/i)).toBeTruthy();
-    } else {
-      const items = resultItems();
-      expect(items).toHaveLength(filteredCount);
-      expect(items.filter((item) => item.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
+    const items = resultItems();
+    expect(items).toHaveLength(foundCountText());
+    for (const item of items) {
+      expect(item.textContent).toContain('✓');
     }
   });
 
   it('marks results stale when the location changes and keeps the previous results visible', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
     await waitForResults();
     const map = await waitForMap();
@@ -384,8 +432,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('shows the moon phase on Moon results and none on Sun results', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
     fireEvent.change(screen.getByLabelText('Search from'), { target: { value: '2025-09-20' } });
     fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
@@ -421,8 +467,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('filters Moon results to the night window', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
     fireEvent.change(screen.getByLabelText('Search from'), { target: { value: '2025-09-20' } });
     fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
@@ -441,8 +485,6 @@ describe('AlignmentFinder workspace', () => {
 
   it('applies a custom crossing-midnight time window to Moon results', async () => {
     render(<Harness />);
-
-    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
     fireEvent.change(screen.getByLabelText('Search from'), { target: { value: '2025-09-20' } });
     fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
