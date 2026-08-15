@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { calculateAlignment } from '../lib/alignment/calculateAlignment';
 import { getBodyHorizontalPosition } from '../lib/astronomy/position';
+import { findRiseSetLocalTimes } from '../lib/astronomy/riseSet';
 import { convertLocalTimeToUtc } from '../lib/timezone/convertLocalTimeToUtc';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
@@ -31,6 +32,42 @@ const OBJECT_SYMBOL: Record<AstroObject, string> = {
   Sun: '☀',
   Moon: '🌙'
 };
+
+function ChevronLeft() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronRight() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
 
 interface AlignmentCalculatorProps {
   observer: GeographicPoint;
@@ -84,6 +121,7 @@ export default function AlignmentCalculator({
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
   const [date, setDate] = useState<string | null>(null);
   const [time, setTime] = useState<string | null>(null);
+  const [riseSetMode, setRiseSetMode] = useState<'rise' | 'set'>('rise');
   const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
   const [activeMarker, setActiveMarker] = useState<'observer' | 'target'>('observer');
   const [snapshot, setSnapshot] = useState<ResultSnapshot | null>(null);
@@ -248,6 +286,60 @@ export default function AlignmentCalculator({
     }
   }
 
+  function shiftDate(isoDate: string, deltaDays: number): string {
+    const [year, month, day] = isoDate.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day + deltaDays)).toISOString().slice(0, 10);
+  }
+
+  function goToPreviousDay() {
+    if (date) {
+      setDate(shiftDate(date, -1));
+    }
+  }
+
+  function goToNextDay() {
+    if (date) {
+      setDate(shiftDate(date, 1));
+    }
+  }
+
+  function riseSetLabel(type: 'rise' | 'set'): string {
+    const base = object === ASTRO_OBJECT.Sun ? 'sun' : 'moon';
+    return `${base}${type}`;
+  }
+
+  function applyRiseSetTime() {
+    if (locationInputError || observerCoordinateError) {
+      setError(observerCoordinateError ?? 'Enter valid coordinates to use rise/set times.');
+      return;
+    }
+
+    if (timeZoneStatus === 'loading') {
+      setError('Waiting for timezone detection to complete.');
+      return;
+    }
+
+    if (!timeZone) {
+      setError('Observer timezone is not available for the selected coordinates.');
+      return;
+    }
+
+    if (!date) {
+      setError('Please pick a date first.');
+      return;
+    }
+
+    const times = findRiseSetLocalTimes(object, observer, date, timeZone);
+    const targetTime = riseSetMode === 'rise' ? times.rise : times.set;
+    if (targetTime === null) {
+      setError(`No ${riseSetLabel(riseSetMode)} time found for this date and location.`);
+      return;
+    }
+
+    setTime(targetTime);
+    setRiseSetMode((prev) => (prev === 'rise' ? 'set' : 'rise'));
+  }
+
   function handleSelectObserverLandmark(selected: SelectedLandmark) {
     onSelectObserverLandmark(selected);
     setFitLocation('observer');
@@ -340,18 +432,45 @@ export default function AlignmentCalculator({
               <label htmlFor="calculate-date" className="text-sm text-slate-300">
                 Date
               </label>
-              <input
-                id="calculate-date"
-                type="date"
-                value={date ?? ''}
-                onChange={(event) => setDate(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={goToPreviousDay}
+                  aria-label="Previous day"
+                  title="Previous day"
+                  className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+                >
+                  <ChevronLeft />
+                </button>
+                <input
+                  id="calculate-date"
+                  type="date"
+                  value={date ?? ''}
+                  onChange={(event) => setDate(event.target.value)}
+                  className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={goToNextDay}
+                  aria-label="Next day"
+                  title="Next day"
+                  className="shrink-0 rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+                >
+                  <ChevronRight />
+                </button>
+              </div>
             </div>
 
             <div>
               <span className="text-sm text-slate-300">Time</span>
               <TimePicker label="Time" value={time ?? ''} onChange={setTime} />
+              <button
+                type="button"
+                onClick={applyRiseSetTime}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+              >
+                Use {riseSetLabel(riseSetMode)} time
+              </button>
             </div>
 
             <div>

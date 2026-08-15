@@ -15,6 +15,11 @@ vi.mock('../../lib/alignment/calculateAlignment', async (importOriginal) => {
   return { ...actual, calculateAlignment: vi.fn(actual.calculateAlignment) };
 });
 
+vi.mock('../../lib/astronomy/riseSet', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/astronomy/riseSet')>();
+  return { ...actual, findRiseSetLocalTimes: vi.fn() };
+});
+
 vi.mock('../WorkspaceMap', () => ({
   __esModule: true,
   default: (props: {
@@ -68,6 +73,7 @@ vi.mock('../WorkspaceMap', () => ({
 
 import { activeGeocoder } from '../../lib/geocoding/index';
 import { calculateAlignment } from '../../lib/alignment/calculateAlignment';
+import { findRiseSetLocalTimes } from '../../lib/astronomy/riseSet';
 
 function Harness() {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
@@ -128,6 +134,10 @@ async function waitForMap() {
 }
 
 describe('AlignmentCalculator workspace', () => {
+  beforeEach(() => {
+    vi.mocked(findRiseSetLocalTimes).mockReset();
+  });
+
   it('starts in needs-calculation state with a bright action button and placeholder results', () => {
     render(<Harness />);
 
@@ -581,5 +591,95 @@ describe('AlignmentCalculator workspace', () => {
 
     expect(screen.queryByTestId('auto-updating')).toBeNull();
     vi.useRealTimers();
+  });
+
+  it('navigates to the previous and next day with the date arrows', () => {
+    render(<Harness />);
+
+    const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: '2026-03-01' } });
+    expect(dateInput.value).toBe('2026-03-01');
+
+    fireEvent.click(screen.getByRole('button', { name: /previous day/i }));
+    expect(dateInput.value).toBe('2026-02-28');
+
+    fireEvent.click(screen.getByRole('button', { name: /next day/i }));
+    expect(dateInput.value).toBe('2026-03-01');
+
+    fireEvent.change(dateInput, { target: { value: '2026-01-01' } });
+    fireEvent.click(screen.getByRole('button', { name: /previous day/i }));
+    expect(dateInput.value).toBe('2025-12-31');
+
+    fireEvent.change(dateInput, { target: { value: '2025-12-31' } });
+    fireEvent.click(screen.getByRole('button', { name: /next day/i }));
+    expect(dateInput.value).toBe('2026-01-01');
+  });
+
+  it('alternates the time between the rise and set times of the object', () => {
+    vi.mocked(findRiseSetLocalTimes).mockReturnValue({ rise: '07:15', set: '18:45' });
+    render(<Harness />);
+
+    const timeButtons = screen.getAllByTitle('Click to type a time');
+    const hourButton = () => timeButtons[0];
+    const minuteButton = () => timeButtons[1];
+
+    expect(screen.getByRole('button', { name: /use sunrise time/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /use sunrise time/i }));
+    expect(hourButton().textContent).toBe('07');
+    expect(minuteButton().textContent).toBe('15');
+    expect(screen.getByRole('button', { name: /use sunset time/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /use sunset time/i }));
+    expect(hourButton().textContent).toBe('18');
+    expect(minuteButton().textContent).toBe('45');
+    expect(screen.getByRole('button', { name: /use sunrise time/i })).toBeTruthy();
+
+    expect(vi.mocked(findRiseSetLocalTimes)).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the moonrise and moonset labels for the Moon object', () => {
+    render(<Harness />);
+
+    fireEvent.change(screen.getByLabelText('Astronomical object'), { target: { value: 'Moon' } });
+
+    expect(screen.getByRole('button', { name: /use moonrise time/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /use sunrise time/i })).toBeNull();
+  });
+
+  it('shows an error when no rise time is found for the date and location', () => {
+    vi.mocked(findRiseSetLocalTimes).mockReturnValue({ rise: null, set: '18:45' });
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: /use sunrise time/i }));
+
+    expect(screen.getByText(/no sunrise time found for this date and location/i)).toBeTruthy();
+  });
+
+  it('marks the calculation as stale when the rise or set time is applied', () => {
+    vi.mocked(findRiseSetLocalTimes).mockReturnValue({ rise: '07:15', set: '18:45' });
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    expect(calculatedButton()).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /use sunrise time/i }));
+
+    expect(calculatedButton()).toBeNull();
+    expect(calculateButton()).toBeTruthy();
+    expect(screen.getByText(/inputs changed/i)).toBeTruthy();
+  });
+
+  it('shows an error and does not change the time when coordinates are invalid', () => {
+    vi.mocked(findRiseSetLocalTimes).mockReturnValue({ rise: '07:15', set: '18:45' });
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole('button', { name: /edit observer location/i }));
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '200' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /use sunrise time/i }));
+
+    expect(screen.getByText(/latitude must be between/i)).toBeTruthy();
+    expect(vi.mocked(findRiseSetLocalTimes)).not.toHaveBeenCalled();
   });
 });
