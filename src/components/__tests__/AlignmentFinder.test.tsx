@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import AlignmentFinder from '../AlignmentFinder';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
@@ -10,6 +10,8 @@ import type { SelectedLandmark } from '../../lib/geocoding/types';
 vi.mock('../../lib/geocoding/index', () => ({
   activeGeocoder: { search: vi.fn() }
 }));
+
+import { activeGeocoder } from '../../lib/geocoding/index';
 
 vi.mock('../WorkspaceMap', () => ({
   __esModule: true,
@@ -23,7 +25,7 @@ vi.mock('../WorkspaceMap', () => ({
     onTargetMove: (_latitude: number, _longitude: number) => void;
     onActivate: (_location: string) => void;
     fitId?: number;
-    fitTarget?: 'both' | 'target';
+    fitTarget?: 'both' | 'observer' | 'target';
     alignment?: {
       object: string;
       objectAzimuth: number;
@@ -65,6 +67,7 @@ vi.mock('../WorkspaceMap', () => ({
 function Harness() {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
   const [target, setTarget] = useState(DEFAULT_TARGET);
+  const [observerLandmark, setObserverLandmark] = useState<SelectedLandmark | null>(null);
   const [landmark, setLandmark] = useState<SelectedLandmark | null>(null);
   const observerCoordinateError = validateCoordinates(observer.latitude, observer.longitude);
 
@@ -72,16 +75,22 @@ function Harness() {
     <AlignmentFinder
       observer={observer}
       target={target}
+      observerLandmark={observerLandmark}
       landmark={landmark}
       timeZone="Asia/Singapore"
       timeZoneStatus="idle"
       observerCoordinateError={observerCoordinateError}
       onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
       onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+      onSelectObserverLandmark={(selected) => {
+        setObserverLandmark(selected);
+        setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+      }}
       onSelectLandmark={(selected) => {
         setLandmark(selected);
         setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
       }}
+      onClearObserverLandmark={() => setObserverLandmark(null)}
       onClearLandmark={() => setLandmark(null)}
     />
   );
@@ -109,9 +118,14 @@ function editObserverLatitude(value: string) {
   fireEvent.keyDown(screen.getAllByLabelText('Latitude')[0], { key: 'Enter' });
 }
 
+async function waitForResults() {
+  return screen.findByTestId('results-count', {}, { timeout: 5000 });
+}
+
 function foundCountText() {
-  const element = screen.getByText(/^\d+ alignments?$/i);
-  return Number(element.textContent?.match(/\d+/)?.[0]);
+  const element = screen.getByTestId('results-count');
+  const numbers = element.textContent?.match(/\d+/g) ?? [];
+  return Number(numbers[numbers.length - 1]);
 }
 
 function resultItems() {
@@ -140,7 +154,7 @@ describe('AlignmentFinder workspace', () => {
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
 
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     expect(foundCountText()).toBeGreaterThanOrEqual(1);
     expect(searchedButton()?.className).toContain('bg-slate-700');
     expect(screen.queryByText(/inputs changed/i)).toBeNull();
@@ -167,7 +181,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
 
     const items = resultItems();
     expect(items.length).toBeGreaterThan(0);
@@ -192,7 +206,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     const map = await waitForMap();
     const azimuthBefore = map.getAttribute('data-object-azimuth');
 
@@ -238,7 +252,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     const map = await waitForMap();
 
     expect(map.getAttribute('data-sun-object')).toBe('Sun');
@@ -251,7 +265,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     const map = await waitForMap();
     const fitBefore = map.getAttribute('data-fit-id');
 
@@ -273,7 +287,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     await waitForMap();
     const fitBefore = mapElement().getAttribute('data-fit-id');
 
@@ -290,7 +304,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     expect(foundCountText()).toBeGreaterThanOrEqual(2);
     expect(resultItems()).toHaveLength(foundCountText());
 
@@ -298,7 +312,7 @@ describe('AlignmentFinder workspace', () => {
 
     const filteredCount = foundCountText();
     if (filteredCount === 0) {
-      expect(screen.getByText(/no alignments found/i)).toBeTruthy();
+      expect(screen.getByText(/no results match the current filters/i)).toBeTruthy();
     } else {
       const items = resultItems();
       expect(items).toHaveLength(filteredCount);
@@ -311,7 +325,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
     const map = await waitForMap();
     const azimuthBefore = map.getAttribute('data-object-azimuth');
 
@@ -323,6 +337,35 @@ describe('AlignmentFinder workspace', () => {
     expect(resultItems().length).toBeGreaterThan(0);
     expect(mapElement().getAttribute('data-object-azimuth')).toBe(azimuthBefore);
     expect(mapElement().getAttribute('data-observer-lat')).toBe('1.5');
+  });
+
+  it('searching an observer location updates the observer marker and fits the map to it', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      {
+        id: 'sp',
+        name: 'Singapore Polytechnic',
+        formattedAddress: '500 Dover Road, Singapore 139651',
+        latitude: 1.3099,
+        longitude: 103.7781
+      }
+    ]);
+    render(<Harness />);
+
+    fireEvent.change(screen.getByPlaceholderText('Search for an address, postal code or place...'), {
+      target: { value: 'Singapore Polytechnic' }
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    fireEvent.mouseDown(screen.getByText('Singapore Polytechnic'));
+
+    expect(mapElement().getAttribute('data-observer-lat')).toBe('1.3099');
+    expect(mapElement().getAttribute('data-observer-lon')).toBe('103.7781');
+    expect(mapElement().getAttribute('data-target-lat')).toBe(String(DEFAULT_TARGET.latitude));
+    expect(mapElement().getAttribute('data-fit-target')).toBe('observer');
+    expect(mapElement().getAttribute('data-fit-id')).toBe('1');
+    vi.useRealTimers();
   });
 
   it('shows a validation error and does not search when coordinates are invalid', () => {
@@ -348,7 +391,7 @@ describe('AlignmentFinder workspace', () => {
     fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
     fireEvent.click(findButton());
 
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
 
     const phaseCells = screen.getAllByTestId('moon-phase');
     expect(phaseCells.length).toBeGreaterThan(0);
@@ -361,7 +404,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Sun' } });
     fireEvent.click(findButton());
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
 
     expect(screen.queryAllByTestId('moon-phase')).toHaveLength(0);
   });
@@ -386,7 +429,7 @@ describe('AlignmentFinder workspace', () => {
     fireEvent.change(screen.getByLabelText('Time filter'), { target: { value: 'night' } });
     fireEvent.click(findButton());
 
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
 
     const items = resultItems();
     expect(items.length).toBe(4);
@@ -408,7 +451,7 @@ describe('AlignmentFinder workspace', () => {
     fireEvent.change(screen.getByLabelText('To'), { target: { value: '07:00' } });
     fireEvent.click(findButton());
 
-    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForResults();
 
     const items = resultItems();
     expect(items.length).toBe(4);

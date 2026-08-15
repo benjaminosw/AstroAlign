@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { findAlignments } from '../lib/alignment/findAlignments';
 import type { AlignmentCandidate } from '../lib/alignment/types';
+import { filterAlignmentResults } from '../lib/alignment/filterResults';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
+import { collectFullMoonInstants, isWithinFullMoonWindow, MOON_PHASE_BUCKETS } from '../lib/astronomy/lunarPhase';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
+import { convertLocalTimeToUtc } from '../lib/timezone/convertLocalTimeToUtc';
 import { isDeepEqual } from '../lib/utils/searchUtils';
 import { formatResultDate } from '../lib/utils/formatResultDate';
 import LocationControls from './LocationControls';
@@ -28,13 +31,16 @@ const WorkspaceMap = dynamic(() => import('./WorkspaceMap'), {
 interface AlignmentFinderProps {
   observer: GeographicPoint;
   target: Target;
+  observerLandmark?: SelectedLandmark | null;
   landmark?: SelectedLandmark | null;
   timeZone: string | null;
   timeZoneStatus: 'idle' | 'loading' | 'error';
   observerCoordinateError: string | null;
   onObserverChange: (_field: keyof GeographicPoint, _value: string) => void;
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
+  onSelectObserverLandmark?: (_landmark: SelectedLandmark) => void;
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
+  onClearObserverLandmark?: () => void;
   onClearLandmark?: () => void;
 }
 
@@ -45,23 +51,24 @@ type SearchedInputs = {
   startDate: string | null;
   endDate: string | null;
   toleranceDegrees: number;
-  fullMoonOnly: boolean;
-  timeFilter: TimeFilterOption;
-  customStartTime: string;
-  customEndTime: string;
   landmarkName: string | null;
 };
+
+const ALL_MOON_PHASES = MOON_PHASE_BUCKETS.map((bucket) => bucket.name);
 
 export default function AlignmentFinder({
   observer,
   target,
+  observerLandmark = null,
   landmark = null,
   timeZone,
   timeZoneStatus,
   observerCoordinateError,
   onObserverChange,
   onTargetChange,
+  onSelectObserverLandmark = () => {},
   onSelectLandmark = () => {},
+  onClearObserverLandmark = () => {},
   onClearLandmark = () => {}
 }: AlignmentFinderProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
@@ -74,13 +81,15 @@ export default function AlignmentFinder({
   const [timeFilter, setTimeFilter] = useState<TimeFilterOption>('any');
   const [customStartTime, setCustomStartTime] = useState('18:00');
   const [customEndTime, setCustomEndTime] = useState('07:00');
-  const [results, setResults] = useState<AlignmentCandidate[] | null>(null);
+  const [selectedMoonPhases, setSelectedMoonPhases] = useState<string[]>(ALL_MOON_PHASES);
+  const [allAlignmentResults, setAllAlignmentResults] = useState<AlignmentCandidate[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'running' | 'completed'>('idle');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [lastSearchedInputs, setLastSearchedInputs] = useState<SearchedInputs | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [mapFitId, setMapFitId] = useState(0);
+  const [fitLocation, setFitLocation] = useState<'observer' | 'target'>('target');
   const [locationInputError, setLocationInputError] = useState(false);
   const abortController = useRef<AbortController | null>(null);
 
@@ -107,10 +116,6 @@ export default function AlignmentFinder({
     startDate,
     endDate,
     toleranceDegrees,
-    fullMoonOnly,
-    timeFilter: object === ASTRO_OBJECT.Moon ? timeFilter : 'any',
-    customStartTime: object === ASTRO_OBJECT.Moon ? customStartTime : '',
-    customEndTime: object === ASTRO_OBJECT.Moon ? customEndTime : '',
     landmarkName: landmark?.name ?? null
   };
 
@@ -177,10 +182,6 @@ export default function AlignmentFinder({
         endDate,
         toleranceDegrees,
         timeZone,
-        fullMoonOnly,
-        timeFilter,
-        customStartTime,
-        customEndTime,
         signal: controller.signal,
         onProgress: (completed, total) => {
           setProgress((completed / total) * 100);
@@ -199,7 +200,7 @@ export default function AlignmentFinder({
         ? sorted.findIndex((candidate) => candidate.alignment.withinTolerance)
         : 0;
 
-      setResults(sorted);
+      setAllAlignmentResults(sorted);
       setLastSearchedInputs({ ...currentInputs, landmarkName: landmark?.name ?? null });
       setSelectedIndex(firstVisibleIndex >= 0 ? firstVisibleIndex : null);
       setStatus('completed');
@@ -215,21 +216,88 @@ export default function AlignmentFinder({
     setProgress(0);
   }
 
-  const visibleResults = results ? (showMatchesOnly ? results.filter((candidate) => candidate.alignment.withinTolerance) : results) : null;
+  const searchedObject = lastSearchedInputs?.object ?? object;
+
+  const filteredByMoonFilters = useMemo(() => {
+    if (allAlignmentResults === null) {
+      return null;
+    }
+    return filterAlignmentResults(allAlignmentResults, {
+      moonPhases: searchedObject === ASTRO_OBJECT.Moon ? selectedMoonPhases : null,
+      timeFilter: searchedObject === ASTRO_OBJECT.Moon ? timeFilter : 'any',
+      customStartTime,
+      customEndTime
+    });
+  }, [allAlignmentResults, searchedObject, selectedMoonPhases, timeFilter, customStartTime, customEndTime]);
+
+  const fullMoonInstants = useMemo(() => {
+    if (!fullMoonOnly || searchedObject !== ASTRO_OBJECT.Moon || !timeZone || !lastSearchedInputs) {
+      return [];
+    }
+    const { startDate, endDate } = lastSearchedInputs;
+    if (!startDate || !endDate) {
+      return [];
+    }
+    const startUtc = convertLocalTimeToUtc(startDate, '00:00:00', timeZone);
+    const endUtc = convertLocalTimeToUtc(endDate, '23:59:59', timeZone);
+    return collectFullMoonInstants(startUtc, endUtc);
+  }, [fullMoonOnly, searchedObject, timeZone, lastSearchedInputs]);
+
+  const visibleResults = useMemo(() => {
+    if (filteredByMoonFilters === null) {
+      return null;
+    }
+    let list = filteredByMoonFilters;
+    if (fullMoonOnly && searchedObject === ASTRO_OBJECT.Moon) {
+      list = list.filter((candidate) => isWithinFullMoonWindow(new Date(candidate.utcInstant), fullMoonInstants));
+    }
+    if (showMatchesOnly) {
+      list = list.filter((candidate) => candidate.alignment.withinTolerance);
+    }
+    return list;
+  }, [filteredByMoonFilters, fullMoonOnly, fullMoonInstants, showMatchesOnly, searchedObject]);
+
+  const filtersActive =
+    searchedObject === ASTRO_OBJECT.Moon &&
+    (timeFilter !== 'any' || fullMoonOnly || selectedMoonPhases.length !== ALL_MOON_PHASES.length);
+
+  const totalCount = allAlignmentResults?.length ?? 0;
+  const shownCount = visibleResults?.length ?? 0;
+
+  function resetFilters() {
+    setSelectedMoonPhases(ALL_MOON_PHASES);
+    setTimeFilter('any');
+    setCustomStartTime('18:00');
+    setCustomEndTime('07:00');
+    setFullMoonOnly(false);
+  }
+
+  function togglePhase(phaseName: string) {
+    setSelectedMoonPhases((prev) =>
+      prev.includes(phaseName) ? prev.filter((name) => name !== phaseName) : [...prev, phaseName]
+    );
+  }
 
   useEffect(() => {
-    if (results === null || visibleResults === null || visibleResults.length === 0) {
+    if (allAlignmentResults === null || visibleResults === null || visibleResults.length === 0) {
       return;
     }
     if (selectedIndex !== null && visibleResults[selectedIndex] === undefined) {
       setSelectedIndex(0);
     }
-  }, [visibleResults, selectedIndex, results]);
+  }, [visibleResults, selectedIndex, allAlignmentResults]);
 
   const selectedCandidate = visibleResults && selectedIndex !== null ? visibleResults[selectedIndex] ?? null : null;
 
+  function handleSelectObserverLandmark(selected: SelectedLandmark) {
+    onSelectObserverLandmark(selected);
+    setFitLocation('observer');
+    setMapFitId((id) => id + 1);
+  }
+
   function handleSelectLandmark(selected: SelectedLandmark) {
     onSelectLandmark(selected);
+    setFitLocation('target');
     setMapFitId((id) => id + 1);
   }
 
@@ -262,12 +330,15 @@ export default function AlignmentFinder({
       <LocationControls
         observer={observer}
         target={target}
+        observerLandmark={observerLandmark}
         landmark={landmark}
         timeZone={timeZone}
         timeZoneStatus={timeZoneStatus}
         onObserverChange={onObserverChange}
         onTargetChange={onTargetChange}
+        onSelectObserverLandmark={handleSelectObserverLandmark}
         onSelectLandmark={handleSelectLandmark}
+        onClearObserverLandmark={onClearObserverLandmark}
         onClearLandmark={onClearLandmark}
         onInputErrorChange={setLocationInputError}
       />
@@ -281,7 +352,7 @@ export default function AlignmentFinder({
         onTargetMove={handleTargetMove}
         onActivate={setActiveMarker}
         fitId={mapFitId}
-        fitTarget="target"
+        fitTarget={fitLocation}
         alignment={selectedAlignment}
         sun={
           selectedCandidate && lastSearchedInputs
@@ -340,21 +411,12 @@ export default function AlignmentFinder({
 
             {object === ASTRO_OBJECT.Moon && (
               <div className="space-y-4">
-                <label className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-sm text-slate-300">
-                  <input
-                    id="find-full-moon"
-                    type="checkbox"
-                    checked={fullMoonOnly}
-                    onChange={(event) => setFullMoonOnly(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
-                  />
-                  Full Moon ±1 day only
-                </label>
-
                 <div>
-                  <label htmlFor="find-time-filter" className="text-sm text-slate-300">
-                    Time filter
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="find-time-filter" className="text-sm text-slate-300">
+                      Time filter
+                    </label>
+                  </div>
                   <TimeFilterPicker
                     option={timeFilter}
                     customStartTime={customStartTime}
@@ -364,6 +426,74 @@ export default function AlignmentFinder({
                     onCustomEndChange={setCustomEndTime}
                   />
                 </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm text-slate-300">Moon phase</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMoonPhases(ALL_MOON_PHASES)}
+                        className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-sky-300 transition hover:bg-slate-800"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMoonPhases([])}
+                        className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-sky-300 transition hover:bg-slate-800"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {MOON_PHASE_BUCKETS.map((phase) => (
+                      <div
+                        key={phase.name}
+                        className="flex items-center gap-2 rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2"
+                      >
+                        <input
+                          id={`find-phase-${phase.name}`}
+                          type="checkbox"
+                          checked={selectedMoonPhases.includes(phase.name)}
+                          onChange={() => togglePhase(phase.name)}
+                          className="h-4 w-4 shrink-0 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                        />
+                        <span aria-hidden="true">{phase.emoji}</span>
+                        <label htmlFor={`find-phase-${phase.name}`} className="text-sm text-slate-300">
+                          {phase.name}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-sm text-slate-300">
+                    <input
+                      id="find-full-moon"
+                      type="checkbox"
+                      checked={fullMoonOnly}
+                      onChange={(event) => setFullMoonOnly(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                    />
+                    Full Moon date window
+                  </label>
+                  <p className="mt-1.5 pl-4 text-xs text-slate-500">
+                    Include dates ±1 day from exact Full Moon only.
+                  </p>
+                </div>
+
+                {filtersActive && (
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
             )}
 
@@ -409,11 +539,13 @@ export default function AlignmentFinder({
         </section>
 
         <section data-testid="alignment-results-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment results</h2>
-            {results !== null && (
-              <p className="text-sm font-semibold text-white">
-                {visibleResults?.length ?? 0} alignment{(visibleResults?.length ?? 0) === 1 ? '' : 's'}
+            {allAlignmentResults !== null && (
+              <p data-testid="results-count" className="text-sm font-semibold text-white">
+                {shownCount !== totalCount || filtersActive
+                  ? `${totalCount} alignments found · ${shownCount} shown`
+                  : `${shownCount} alignment${shownCount === 1 ? '' : 's'}`}
               </p>
             )}
           </div>
@@ -437,7 +569,7 @@ export default function AlignmentFinder({
             </div>
           )}
 
-          {results && !isCurrent && (
+          {allAlignmentResults && !isCurrent && (
             <div
               role="status"
               className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
@@ -448,12 +580,33 @@ export default function AlignmentFinder({
             </div>
           )}
 
-          {results === null ? (
+          {allAlignmentResults === null ? (
             status !== 'running' ? (
               <p className="mt-4 text-sm text-slate-500">Results will appear here after you search.</p>
             ) : null
-          ) : visibleResults === null || visibleResults.length === 0 ? (
+          ) : allAlignmentResults.length === 0 ? (
             <p className="mt-4 text-sm text-slate-500">No alignments found within the selected range and tolerance.</p>
+          ) : searchedObject === ASTRO_OBJECT.Moon && selectedMoonPhases.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+              <p className="text-sm font-medium text-slate-200">No Moon phases selected.</p>
+              <p className="mt-1 text-sm text-slate-400">Select at least one phase to display results.</p>
+            </div>
+          ) : visibleResults === null || visibleResults.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+              <p className="text-sm font-medium text-slate-200">No results match the current filters.</p>
+              <p className="mt-1 text-sm text-slate-400">
+                {totalCount} alignment{totalCount === 1 ? ' was' : 's were'} calculated.
+              </p>
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="mt-3 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           ) : (
             <div className="mt-3 max-h-[420px] overflow-y-auto rounded-2xl border border-slate-800 p-1.5">
               {visibleResults.map((candidate, index) => (

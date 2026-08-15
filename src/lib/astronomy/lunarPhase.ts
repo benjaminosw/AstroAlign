@@ -47,7 +47,7 @@ export interface MoonPhaseInfo extends MoonPhaseBucket {
   illuminationPercent: number;
 }
 
-const MOON_PHASE_BUCKETS: MoonPhaseBucket[] = [
+export const MOON_PHASE_BUCKETS: MoonPhaseBucket[] = [
   { name: 'New Moon', emoji: '🌑' },
   { name: 'Waxing Crescent', emoji: '🌒' },
   { name: 'First Quarter', emoji: '🌓' },

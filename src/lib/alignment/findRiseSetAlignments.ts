@@ -3,8 +3,7 @@ import { convertLocalTimeToUtc } from '../timezone/convertLocalTimeToUtc';
 import { formatLocalDateTimeFromUtc } from '../timezone/formatLocalDateTime';
 import { isValidIsoDate } from '../utils/searchUtils';
 import { findRiseSetEvent } from '../astronomy/riseSet';
-import { collectFullMoonInstants, getMoonPhase, isWithinFullMoonWindow } from '../astronomy/lunarPhase';
-import { isTimeWithinWindow, resolveTimeWindow } from './timeFilter';
+import { getMoonPhase } from '../astronomy/lunarPhase';
 import { initialBearing } from '../geometry/bearing';
 import { angularDifference } from '../geometry/angularSeparation';
 import { greatCircleDistanceKm } from '../geometry/distance';
@@ -38,8 +37,6 @@ export async function findRiseSetAlignments(input: FindAlignmentsInput): Promise
     throw new Error('Start date must be before or equal to end date');
   }
 
-  const startDateUtc = convertLocalTimeToUtc(input.startDate, '00:00:00', input.timeZone);
-  const endDateUtc = convertLocalTimeToUtc(input.endDate, '23:59:59', input.timeZone);
   const targetAzimuth = initialBearing(
     input.observer.latitude,
     input.observer.longitude,
@@ -55,10 +52,6 @@ export async function findRiseSetAlignments(input: FindAlignmentsInput): Promise
   );
 
   const targetAlt = targetAltitude(input.observer, input.target, targetDistanceKm);
-  const fullMoonInstants =
-    input.object === 'Moon' && input.fullMoonOnly
-      ? collectFullMoonInstants(startDateUtc, endDateUtc)
-      : [];
 
   const candidates: AlignmentCandidate[] = [];
   const startLocalDate = new Date(`${input.startDate}T00:00:00Z`);
@@ -85,27 +78,13 @@ export async function findRiseSetAlignments(input: FindAlignmentsInput): Promise
         continue;
       }
 
-      if (input.object === 'Moon' && input.fullMoonOnly && !isWithinFullMoonWindow(event.instant, fullMoonInstants)) {
-        continue;
-      }
-
       const azimuthError = angularDifference(targetAzimuth, event.azimuth);
       const metadata = formatResultMetadata(event.instant, input.timeZone);
-
-      if (input.object === 'Moon') {
-        const timeWindow = resolveTimeWindow({
-          option: input.timeFilter ?? 'any',
-          customStartTime: input.customStartTime,
-          customEndTime: input.customEndTime
-        });
-        if (timeWindow && !isTimeWithinWindow(metadata.localTime, timeWindow)) {
-          continue;
-        }
-      }
 
       const moonPhase = input.object === 'Moon' ? getMoonPhase(event.instant) : undefined;
 
       candidates.push({
+        utcInstant: event.instant.toISOString(),
         eventType,
         eventLabel: getEventLabel(input.object, eventType),
         localDate: metadata.localDate,

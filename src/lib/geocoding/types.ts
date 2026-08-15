@@ -3,8 +3,21 @@ export interface GeocodingResult {
   name: string;
   locality?: string;
   country?: string;
+  formattedAddress?: string;
   latitude: number;
   longitude: number;
+}
+
+export interface LocationSearchResult {
+  id: string;
+  name: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface GeocodingService {
+  search(_query: string, _options?: { signal?: AbortSignal }): Promise<LocationSearchResult[]>;
 }
 
 export interface GeocodingProvider {

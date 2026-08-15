@@ -27,7 +27,7 @@ vi.mock('../WorkspaceMap', () => ({
     onTargetMove: (_latitude: number, _longitude: number) => void;
     onActivate: (_location: string) => void;
     fitId?: number;
-    fitTarget?: 'both' | 'target';
+    fitTarget?: 'both' | 'observer' | 'target';
     alignment?: {
       object: string;
       objectAzimuth: number;
@@ -72,6 +72,7 @@ import { calculateAlignment } from '../../lib/alignment/calculateAlignment';
 function Harness() {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
   const [target, setTarget] = useState(DEFAULT_TARGET);
+  const [observerLandmark, setObserverLandmark] = useState<SelectedLandmark | null>(null);
   const [landmark, setLandmark] = useState<SelectedLandmark | null>(null);
   const observerCoordinateError = validateCoordinates(observer.latitude, observer.longitude);
 
@@ -79,16 +80,22 @@ function Harness() {
     <AlignmentCalculator
       observer={observer}
       target={target}
+      observerLandmark={observerLandmark}
       landmark={landmark}
       timeZone="Asia/Singapore"
       timeZoneStatus="idle"
       observerCoordinateError={observerCoordinateError}
       onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
       onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+      onSelectObserverLandmark={(selected) => {
+        setObserverLandmark(selected);
+        setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+      }}
       onSelectLandmark={(selected) => {
         setLandmark(selected);
         setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
       }}
+      onClearObserverLandmark={() => setObserverLandmark(null)}
       onClearLandmark={() => setLandmark(null)}
     />
   );
@@ -301,7 +308,7 @@ describe('AlignmentCalculator workspace', () => {
     fireEvent.click(calculateButton());
     expect(calculatedButton()).toBeTruthy();
 
-    fireEvent.change(screen.getByPlaceholderText('Search for a landmark...'), { target: { value: 'Marina Bay Sands' } });
+    fireEvent.change(screen.getByPlaceholderText('Search for a landmark or address...'), { target: { value: 'Marina Bay Sands' } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
@@ -388,7 +395,7 @@ describe('AlignmentCalculator workspace', () => {
     ]);
     render(<Harness />);
 
-    fireEvent.change(screen.getByPlaceholderText('Search for a landmark...'), { target: { value: 'Marina Bay Sands' } });
+    fireEvent.change(screen.getByPlaceholderText('Search for a landmark or address...'), { target: { value: 'Marina Bay Sands' } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
@@ -401,6 +408,39 @@ describe('AlignmentCalculator workspace', () => {
 
     expect(mapProp('data-target-name')).toBe('Marina Bay Sands');
     expect(mapProp('data-target-lat')).toBe('1.2834');
+    expect(mapProp('data-fit-id')).toBe('1');
+    vi.useRealTimers();
+  });
+
+  it('searching an observer location updates the observer marker and fits the map to it', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      {
+        id: 'sp',
+        name: 'Singapore Polytechnic',
+        formattedAddress: '500 Dover Road, Singapore 139651',
+        latitude: 1.3099,
+        longitude: 103.7781
+      }
+    ]);
+    render(<Harness />);
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Search for an address, postal code or place...'), {
+      target: { value: 'Singapore Polytechnic' }
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    fireEvent.mouseDown(screen.getByText('Singapore Polytechnic'));
+
+    expect(mapProp('data-observer-lat')).toBe('1.3099');
+    expect(mapProp('data-observer-lon')).toBe('103.7781');
+    expect(mapProp('data-target-lat')).toBe(String(DEFAULT_TARGET.latitude));
+    expect(mapProp('data-fit-target')).toBe('observer');
     expect(mapProp('data-fit-id')).toBe('1');
     vi.useRealTimers();
   });

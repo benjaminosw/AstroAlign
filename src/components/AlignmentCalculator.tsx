@@ -35,13 +35,16 @@ const OBJECT_SYMBOL: Record<AstroObject, string> = {
 interface AlignmentCalculatorProps {
   observer: GeographicPoint;
   target: Target;
+  observerLandmark?: SelectedLandmark | null;
   landmark?: SelectedLandmark | null;
   timeZone: string | null;
   timeZoneStatus: 'idle' | 'loading' | 'error';
   observerCoordinateError: string | null;
   onObserverChange: (_field: keyof GeographicPoint, _value: string) => void;
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
+  onSelectObserverLandmark?: (_landmark: SelectedLandmark) => void;
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
+  onClearObserverLandmark?: () => void;
   onClearLandmark?: () => void;
 }
 
@@ -66,13 +69,16 @@ type CalculatedInputs = {
 export default function AlignmentCalculator({
   observer,
   target,
+  observerLandmark = null,
   landmark = null,
   timeZone,
   timeZoneStatus,
   observerCoordinateError,
   onObserverChange,
   onTargetChange,
+  onSelectObserverLandmark = () => {},
   onSelectLandmark = () => {},
+  onClearObserverLandmark = () => {},
   onClearLandmark = () => {}
 }: AlignmentCalculatorProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
@@ -84,6 +90,7 @@ export default function AlignmentCalculator({
   const [error, setError] = useState<string | null>(null);
   const [lastCalculatedInputs, setLastCalculatedInputs] = useState<CalculatedInputs | null>(null);
   const [mapFitId, setMapFitId] = useState(0);
+  const [fitLocation, setFitLocation] = useState<'observer' | 'target'>('target');
   const [autoUpdating, setAutoUpdating] = useState(false);
   const [autoError, setAutoError] = useState<string | null>(null);
   const [locationInputError, setLocationInputError] = useState(false);
@@ -241,8 +248,15 @@ export default function AlignmentCalculator({
     }
   }
 
+  function handleSelectObserverLandmark(selected: SelectedLandmark) {
+    onSelectObserverLandmark(selected);
+    setFitLocation('observer');
+    setMapFitId((id) => id + 1);
+  }
+
   function handleSelectLandmark(selected: SelectedLandmark) {
     onSelectLandmark(selected);
+    setFitLocation('target');
     setMapFitId((id) => id + 1);
   }
 
@@ -274,12 +288,15 @@ export default function AlignmentCalculator({
       <LocationControls
         observer={observer}
         target={target}
+        observerLandmark={observerLandmark}
         landmark={landmark}
         timeZone={timeZone}
         timeZoneStatus={timeZoneStatus}
         onObserverChange={onObserverChange}
         onTargetChange={onTargetChange}
+        onSelectObserverLandmark={handleSelectObserverLandmark}
         onSelectLandmark={handleSelectLandmark}
+        onClearObserverLandmark={onClearObserverLandmark}
         onClearLandmark={onClearLandmark}
         onInputErrorChange={setLocationInputError}
       />
@@ -293,7 +310,7 @@ export default function AlignmentCalculator({
         onTargetMove={handleTargetMove}
         onActivate={setActiveMarker}
         fitId={mapFitId}
-        fitTarget="target"
+        fitTarget={fitLocation}
         alignment={alignment}
         sun={sunAzimuth !== null ? { object, azimuth: sunAzimuth } : null}
         className="h-[460px] lg:h-[620px]"

@@ -73,25 +73,20 @@ describe('findAlignments', () => {
     expect(results.every((candidate) => candidate.moonPhase?.name === 'Full Moon')).toBe(true);
   });
 
-  it('filters Moon events to the night window and excludes daytime events', async () => {
-    const all = await findAlignments(moonRange);
-    expect(all.some((candidate) => !isTimeWithinWindow(candidate.localTime, { start: '18:00', end: '07:00' }))).toBe(true);
+  it('calculates the complete candidate set so result filters can be applied afterwards', async () => {
+    const results = await findAlignments(moonRange);
 
-    const night = await findAlignments({ ...moonRange, timeFilter: 'night' });
-    expect(night.length).toBeGreaterThan(0);
-    expect(night.length).toBeLessThan(all.length);
-    expect(night.every((candidate) => isTimeWithinWindow(candidate.localTime, { start: '18:00', end: '07:00' }))).toBe(true);
-  });
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((candidate) => candidate.utcInstant)).toBe(true);
 
-  it('applies a custom crossing-midnight window to Moon events', async () => {
-    const custom = await findAlignments({
-      ...moonRange,
-      timeFilter: 'custom',
-      customStartTime: '18:00',
-      customEndTime: '07:00'
-    });
+    const hasNightEvent = results.some((candidate) =>
+      isTimeWithinWindow(candidate.localTime, { start: '18:00', end: '07:00' })
+    );
+    const hasDaytimeEvent = results.some((candidate) =>
+      !isTimeWithinWindow(candidate.localTime, { start: '18:00', end: '07:00' })
+    );
 
-    expect(custom.length).toBeGreaterThan(0);
-    expect(custom.every((candidate) => isTimeWithinWindow(candidate.localTime, { start: '18:00', end: '07:00' }))).toBe(true);
+    expect(hasNightEvent).toBe(true);
+    expect(hasDaytimeEvent).toBe(true);
   });
 });

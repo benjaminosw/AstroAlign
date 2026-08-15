@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type RefObject } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { GeographicPoint } from '../types/astronomy';
 
 export type LocationField = keyof GeographicPoint;
@@ -12,6 +12,8 @@ interface LocationEditorProps {
   values: GeographicPoint;
   onChange: (_field: LocationField, _value: string) => void;
   onErrorChange?: (_hasError: boolean) => void;
+  searchNode?: ReactNode;
+  summaryNode?: ReactNode;
 }
 
 const FIELD_LABELS: Record<LocationField, string> = {
@@ -143,7 +145,9 @@ export default function LocationEditor({
   icon,
   values,
   onChange,
-  onErrorChange = () => {}
+  onErrorChange = () => {},
+  searchNode,
+  summaryNode
 }: LocationEditorProps) {
   const [editing, setEditing] = useState(false);
   const [drafts, setDrafts] = useState<Record<LocationField, string>>(() => stringify(values));
@@ -235,6 +239,9 @@ export default function LocationEditor({
           {editing ? <CheckIcon /> : <PencilIcon />}
         </button>
       </div>
+
+      {searchNode && <div className="mt-3">{searchNode}</div>}
+      {summaryNode && <div className="mt-3">{summaryNode}</div>}
 
       {editing ? (
         <div className="mt-3 space-y-3">

@@ -1,5 +1,5 @@
 import { GeocodingError } from './types';
-import type { GeocodingProvider, GeocodingResult } from './types';
+import type { GeocodingService, GeocodingProvider, GeocodingResult } from './types';
 
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const RESULT_LIMIT = 8;
@@ -30,7 +30,7 @@ function toLocality(address: NominatimAddress | undefined): string | undefined {
   return address.city ?? address.town ?? address.village ?? address.municipality ?? address.state;
 }
 
-export const nominatimProvider: GeocodingProvider = {
+export const nominatimProvider: GeocodingService & GeocodingProvider = {
   async search(query, options) {
     const params = new URLSearchParams({
       q: query,
@@ -73,7 +73,7 @@ export const nominatimProvider: GeocodingProvider = {
     }
 
     return places
-      .map((place): GeocodingResult | null => {
+      .map((place): (GeocodingResult & { formattedAddress: string }) | null => {
         const latitude = Number(place.lat);
         const longitude = Number(place.lon);
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
@@ -86,10 +86,11 @@ export const nominatimProvider: GeocodingProvider = {
           name: place.name ?? place.display_name.split(',')[0].trim(),
           locality,
           country: address?.country,
+          formattedAddress: place.display_name,
           latitude,
           longitude
         };
       })
-      .filter((place): place is GeocodingResult => place !== null);
+      .filter((place): place is GeocodingResult & { formattedAddress: string } => place !== null);
   }
 };

@@ -11,6 +11,9 @@ vi.mock('../../lib/geocoding/index', () => ({
 
 import { activeGeocoder } from '../../lib/geocoding/index';
 
+const OBSERVER_PLACEHOLDER = 'Search for an address, postal code or place...';
+const TARGET_PLACEHOLDER = 'Search for a landmark or address...';
+
 function Harness({
   onInputErrorChange
 }: {
@@ -18,21 +21,28 @@ function Harness({
 } = {}) {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
   const [target, setTarget] = useState(DEFAULT_TARGET);
+  const [observerLandmark, setObserverLandmark] = useState<SelectedLandmark | null>(null);
   const [landmark, setLandmark] = useState<SelectedLandmark | null>(null);
 
   return (
     <LocationControls
       observer={observer}
       target={target}
+      observerLandmark={observerLandmark}
       landmark={landmark}
       timeZone="Asia/Singapore"
       timeZoneStatus="idle"
       onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
       onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+      onSelectObserverLandmark={(selected) => {
+        setObserverLandmark(selected);
+        setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+      }}
       onSelectLandmark={(selected) => {
         setLandmark(selected);
         setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
       }}
+      onClearObserverLandmark={() => setObserverLandmark(null)}
       onClearLandmark={() => setLandmark(null)}
       onInputErrorChange={onInputErrorChange}
     />
@@ -67,8 +77,16 @@ function changeLatitude(index: number, value: string) {
   fireEvent.change(screen.getAllByLabelText('Latitude')[index], { target: { value } });
 }
 
+async function selectSearchResult(placeholder: string, resultName: string) {
+  fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value: resultName } });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(500);
+  });
+  fireEvent.mouseDown(screen.getByText(resultName));
+}
+
 describe('LocationControls', () => {
-  it('renders the Location heading, plain-text coordinate panels, timezone chip, and landmark search', () => {
+  it('renders the Location heading, plain-text coordinate panels, timezone chip, and both search bars', () => {
     render(<Harness />);
 
     expect(screen.getByText('Location')).toBeTruthy();
@@ -82,7 +100,8 @@ describe('LocationControls', () => {
     expect(screen.getByText(displayValue(DEFAULT_TARGET.latitude))).toBeTruthy();
     expect(screen.getAllByText('0 m')).toHaveLength(2);
     expect(screen.getByText(/Asia\/Singapore/)).toBeTruthy();
-    expect(screen.getByPlaceholderText('Search for a landmark...')).toBeTruthy();
+    expect(screen.getByPlaceholderText(OBSERVER_PLACEHOLDER)).toBeTruthy();
+    expect(screen.getByPlaceholderText(TARGET_PLACEHOLDER)).toBeTruthy();
   });
 
   it('shows exactly one edit button per location and no per-field edit buttons', () => {
@@ -199,18 +218,85 @@ describe('LocationControls', () => {
     expect(onInputErrorChange).toHaveBeenLastCalledWith(true);
   });
 
-  it('selects a landmark and reflects it in the chip and target coordinates', async () => {
+  it('selects an observer search result and updates only the observer', async () => {
     vi.useFakeTimers();
     vi.mocked(activeGeocoder.search).mockResolvedValue([
-      { id: 'mbs', name: 'Marina Bay Sands', locality: 'Singapore', country: 'Singapore', latitude: 1.2834, longitude: 103.8607 }
+      {
+        id: 'sp',
+        name: 'Singapore Polytechnic',
+        formattedAddress: '500 Dover Road, Singapore 139651',
+        latitude: 1.3099,
+        longitude: 103.7781
+      }
     ]);
     render(<Harness />);
 
-    fireEvent.change(screen.getByPlaceholderText('Search for a landmark...'), { target: { value: 'Marina Bay Sands' } });
+    await selectSearchResult(OBSERVER_PLACEHOLDER, 'Singapore Polytechnic');
+
+    expect(screen.getByText('Singapore Polytechnic')).toBeTruthy();
+    expect(screen.getByText(displayValue(1.3099))).toBeTruthy();
+    expect(screen.getByText(displayValue(103.7781))).toBeTruthy();
+    expect(screen.getByText(displayValue(DEFAULT_TARGET.latitude))).toBeTruthy();
+    expect(screen.getByText(displayValue(DEFAULT_TARGET.longitude))).toBeTruthy();
+    expect(screen.getByText('500 Dover Road, Singapore 139651')).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('selects a target search result and updates only the target', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      {
+        id: 'mbs',
+        name: 'Marina Bay Sands',
+        formattedAddress: '10 Bayfront Avenue, Singapore 018956',
+        latitude: 1.2834,
+        longitude: 103.8607
+      }
+    ]);
+    render(<Harness />);
+
+    await selectSearchResult(TARGET_PLACEHOLDER, 'Marina Bay Sands');
+
+    expect(screen.getByText('Marina Bay Sands')).toBeTruthy();
+    expect(screen.getByText(displayValue(1.2834))).toBeTruthy();
+    expect(screen.getByText(displayValue(103.8607))).toBeTruthy();
+    expect(screen.getByText(displayValue(DEFAULT_OBSERVER.latitude))).toBeTruthy();
+    expect(screen.getByText(displayValue(DEFAULT_OBSERVER.longitude))).toBeTruthy();
+    expect(screen.getByText('10 Bayfront Avenue, Singapore 018956')).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('a failed target search does not overwrite existing coordinates', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([]);
+    render(<Harness />);
+
+    fireEvent.change(screen.getByPlaceholderText(TARGET_PLACEHOLDER), { target: { value: 'Nowhereville' } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    fireEvent.mouseDown(screen.getByText('Marina Bay Sands'));
+
+    expect(screen.getByText(/no locations found/i)).toBeTruthy();
+    expect(screen.getByText(displayValue(DEFAULT_TARGET.latitude))).toBeTruthy();
+    expect(screen.getByText(displayValue(DEFAULT_TARGET.longitude))).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('selects a landmark and reflects it in the summary and target coordinates', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      {
+        id: 'mbs',
+        name: 'Marina Bay Sands',
+        locality: 'Singapore',
+        country: 'Singapore',
+        latitude: 1.2834,
+        longitude: 103.8607
+      }
+    ]);
+    render(<Harness />);
+
+    await selectSearchResult(TARGET_PLACEHOLDER, 'Marina Bay Sands');
 
     expect(screen.getByText('Marina Bay Sands')).toBeTruthy();
     expect(screen.getAllByText('1.2834')).toHaveLength(1);
@@ -220,20 +306,45 @@ describe('LocationControls', () => {
   it('clears a selected landmark', async () => {
     vi.useFakeTimers();
     vi.mocked(activeGeocoder.search).mockResolvedValue([
-      { id: 'mbs', name: 'Marina Bay Sands', locality: 'Singapore', country: 'Singapore', latitude: 1.2834, longitude: 103.8607 }
+      {
+        id: 'mbs',
+        name: 'Marina Bay Sands',
+        locality: 'Singapore',
+        country: 'Singapore',
+        latitude: 1.2834,
+        longitude: 103.8607
+      }
     ]);
     render(<Harness />);
 
-    fireEvent.change(screen.getByPlaceholderText('Search for a landmark...'), { target: { value: 'Marina Bay Sands' } });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    fireEvent.mouseDown(screen.getByText('Marina Bay Sands'));
+    await selectSearchResult(TARGET_PLACEHOLDER, 'Marina Bay Sands');
     expect(screen.getByText('Marina Bay Sands')).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('Clear landmark'));
 
     expect(screen.queryByText('Marina Bay Sands')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('clears a selected observer landmark', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      {
+        id: 'sp',
+        name: 'Singapore Polytechnic',
+        formattedAddress: '500 Dover Road, Singapore 139651',
+        latitude: 1.3099,
+        longitude: 103.7781
+      }
+    ]);
+    render(<Harness />);
+
+    await selectSearchResult(OBSERVER_PLACEHOLDER, 'Singapore Polytechnic');
+    expect(screen.getByText('Singapore Polytechnic')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Clear observer landmark'));
+
+    expect(screen.queryByText('Singapore Polytechnic')).toBeNull();
     vi.useRealTimers();
   });
 });

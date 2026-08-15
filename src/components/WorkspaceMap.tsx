@@ -41,7 +41,7 @@ interface WorkspaceMapProps {
   onTargetMove: (_latitude: number, _longitude: number) => void;
   onActivate: (_location: LocationId) => void;
   fitId?: number;
-  fitTarget?: 'both' | 'target';
+  fitTarget?: 'both' | 'observer' | 'target';
   alignment?: AlignmentOverlay | null;
   sun?: SunPosition | null;
   className?: string;
@@ -259,12 +259,20 @@ export default function WorkspaceMap({
   const geometryRef = useRef({ observer, target, sector, sunEndpoint });
   geometryRef.current = { observer, target, sector, sunEndpoint };
 
-  function fitBoundsTo(kind: 'both' | 'target') {
+  function fitBoundsTo(kind: 'both' | 'observer' | 'target') {
     const map = mapRef.current;
     if (!map) {
       return;
     }
     const geometry = geometryRef.current;
+    if (kind === 'observer') {
+      const bounds = new maplibregl.LngLatBounds(
+        [geometry.observer.longitude, geometry.observer.latitude],
+        [geometry.observer.longitude, geometry.observer.latitude]
+      );
+      map.fitBounds(bounds, { padding: 90, maxZoom: 16, duration: 600 });
+      return;
+    }
     if (kind === 'target') {
       const bounds = new maplibregl.LngLatBounds(
         [geometry.target.longitude, geometry.target.latitude],

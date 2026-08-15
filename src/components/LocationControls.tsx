@@ -6,7 +6,7 @@ import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { formatTimezoneLabel } from '../lib/timezone/formatTimezoneLabel';
 import LocationEditor from './LocationEditor';
-import LandmarkSearch from './LandmarkSearch';
+import LocationSearch from './LocationSearch';
 
 interface LocationControlsProps {
   observer: GeographicPoint;
@@ -15,13 +15,53 @@ interface LocationControlsProps {
   timeZoneStatus: 'idle' | 'loading' | 'error';
   onObserverChange: (_field: keyof GeographicPoint, _value: string) => void;
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
+  observerLandmark?: SelectedLandmark | null;
   landmark?: SelectedLandmark | null;
+  onSelectObserverLandmark?: (_landmark: SelectedLandmark) => void;
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
+  onClearObserverLandmark?: () => void;
   onClearLandmark?: () => void;
   onInputErrorChange?: (_hasError: boolean) => void;
 }
 
 function noop() {}
+
+interface PlaceSummaryProps {
+  place: SelectedLandmark;
+  coordinatesAdjusted: boolean;
+  clearLabel: string;
+  onClear: () => void;
+  icon: string;
+}
+
+function PlaceSummary({ place, coordinatesAdjusted, clearLabel, onClear, icon }: PlaceSummaryProps) {
+  const subtitle = place.formattedAddress ?? ([place.locality, place.country].filter(Boolean).join(', ') || null);
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 py-2">
+      <div className="flex min-w-0 items-start gap-2">
+        <span aria-hidden="true" className="mt-0.5 text-xs">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">{place.name}</p>
+          {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
+          {coordinatesAdjusted && (
+            <p className="mt-0.5 text-[11px] font-medium text-amber-300">Coordinates manually adjusted</p>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={clearLabel}
+        title="Clear selection"
+        className="rounded-lg px-2 py-0.5 text-lg leading-none text-slate-400 transition hover:bg-slate-800 hover:text-white"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
 
 export default function LocationControls({
   observer,
@@ -30,8 +70,11 @@ export default function LocationControls({
   timeZoneStatus,
   onObserverChange,
   onTargetChange,
+  observerLandmark = null,
   landmark = null,
+  onSelectObserverLandmark = noop,
   onSelectLandmark = noop,
+  onClearObserverLandmark = noop,
   onClearLandmark = noop,
   onInputErrorChange = noop
 }: LocationControlsProps) {
@@ -63,8 +106,10 @@ export default function LocationControls({
       <span className="text-xs text-slate-500">Enter valid coordinates to detect timezone</span>
     );
 
-  const landmarkSubtitle = landmark ? [landmark.locality, landmark.country].filter(Boolean).join(', ') : '';
-  const coordinatesAdjusted =
+  const observerCoordinatesAdjusted =
+    observerLandmark !== null &&
+    (observer.latitude !== observerLandmark.latitude || observer.longitude !== observerLandmark.longitude);
+  const targetCoordinatesAdjusted =
     landmark !== null && (target.latitude !== landmark.latitude || target.longitude !== landmark.longitude);
 
   return (
@@ -82,6 +127,25 @@ export default function LocationControls({
           values={observer}
           onChange={onObserverChange}
           onErrorChange={setObserverError}
+          searchNode={
+            <LocationSearch
+              idPrefix="observer"
+              ariaLabel="Observer location"
+              placeholder="Search for an address, postal code or place..."
+              onSelect={onSelectObserverLandmark}
+            />
+          }
+          summaryNode={
+            observerLandmark ? (
+              <PlaceSummary
+                place={observerLandmark}
+                coordinatesAdjusted={observerCoordinatesAdjusted}
+                clearLabel="Clear observer landmark"
+                onClear={onClearObserverLandmark}
+                icon="📷"
+              />
+            ) : null
+          }
         />
         <LocationEditor
           idPrefix="target"
@@ -90,32 +154,27 @@ export default function LocationControls({
           values={target}
           onChange={onTargetChange}
           onErrorChange={setTargetError}
+          searchNode={
+            <LocationSearch
+              idPrefix="target"
+              ariaLabel="Target location"
+              placeholder="Search for a landmark or address..."
+              onSelect={onSelectLandmark}
+            />
+          }
+          summaryNode={
+            landmark ? (
+              <PlaceSummary
+                place={landmark}
+                coordinatesAdjusted={targetCoordinatesAdjusted}
+                clearLabel="Clear landmark"
+                onClear={onClearLandmark}
+                icon="🎯"
+              />
+            ) : null
+          }
         />
       </div>
-
-      <div className="w-full">
-        <LandmarkSearch ariaLabel="Search landmark" onSelect={onSelectLandmark} />
-      </div>
-
-      {landmark && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span aria-hidden="true">🎯</span>
-            <p className="truncate text-sm font-medium text-white">{landmark.name}</p>
-            {landmarkSubtitle && <p className="truncate text-xs text-slate-400">{landmarkSubtitle}</p>}
-            {coordinatesAdjusted && <p className="text-xs font-medium text-amber-300">Coordinates manually adjusted</p>}
-          </div>
-          <button
-            type="button"
-            aria-label="Clear landmark"
-            title="Clear landmark"
-            onClick={onClearLandmark}
-            className="rounded-lg px-2 py-0.5 text-lg leading-none text-slate-400 transition hover:bg-slate-800 hover:text-white"
-          >
-            ×
-          </button>
-        </div>
-      )}
 
       {hasInputError && (
         <p className="text-sm text-rose-300" role="alert">

@@ -34,6 +34,7 @@ export default function AlignmentApp() {
   const [activeTab, setActiveTab] = useState<TabId>('calculate');
   const [observer, setObserver] = useState<GeographicPoint>(DEFAULT_OBSERVER);
   const [target, setTarget] = useState<GeographicPoint>(DEFAULT_TARGET);
+  const [observerLandmark, setObserverLandmark] = useState<SelectedLandmark | null>(null);
   const [targetLandmark, setTargetLandmark] = useState<SelectedLandmark | null>(null);
   const [timeZone, setTimeZone] = useState<string | null>(null);
   const [timeZoneStatus, setTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -99,6 +100,15 @@ export default function AlignmentApp() {
     setTarget((prev) => ({ ...prev, [field]: Number(value) }));
   }
 
+  function handleSelectObserverLandmark(landmark: SelectedLandmark) {
+    setObserver((prev) => ({ ...prev, latitude: landmark.latitude, longitude: landmark.longitude }));
+    setObserverLandmark(landmark);
+  }
+
+  function handleClearObserverLandmark() {
+    setObserverLandmark(null);
+  }
+
   function handleSelectLandmark(landmark: SelectedLandmark) {
     setTarget((prev) => ({ ...prev, latitude: landmark.latitude, longitude: landmark.longitude }));
     setTargetLandmark(landmark);
@@ -113,13 +123,16 @@ export default function AlignmentApp() {
   const commonProps = {
     observer,
     target,
+    observerLandmark,
     landmark: targetLandmark,
     timeZone,
     timeZoneStatus,
     observerCoordinateError,
     onObserverChange: handleObserverChange,
     onTargetChange: handleTargetChange,
+    onSelectObserverLandmark: handleSelectObserverLandmark,
     onSelectLandmark: handleSelectLandmark,
+    onClearObserverLandmark: handleClearObserverLandmark,
     onClearLandmark: handleClearLandmark
   };
 
