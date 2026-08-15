@@ -4,14 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker, StyleSpecification } from 'maplibre-gl';
+import type { Point as GeoJSONPoint } from 'geojson';
 import type { GeographicPoint } from '../types/astronomy';
 import type { ShootingArea, ShootingOpportunity } from '../lib/opportunities/types';
 import { getMapStyle } from '../lib/map/mapConfig';
-import { buildCameraCanvas, buildCameraElement, buildPinElement } from '../lib/map/markers';
+import { buildAreaMarkerElement, buildCameraElement, buildPinElement } from '../lib/map/markers';
 import { pathPointAtFraction, pathTotalLengthKm } from '../lib/opportunities/pathGeometry';
 import { initialBearing } from '../lib/geometry/bearing';
-import { destinationPoint } from '../lib/geometry/destinationPoint';
-import { greatCircleDistanceKm } from '../lib/geometry/distance';
 
 export interface AreaCameraMarker {
   id: string;
@@ -24,7 +23,12 @@ export interface AreaCameraMarker {
 export interface ShootingAreaHighlight {
   zoneStartKm: number;
   zoneEndKm: number;
-  directionAzimuth: number;
+}
+
+export interface ShootingMapViewport {
+  longitude: number;
+  latitude: number;
+  zoom: number;
 }
 
 interface ShootingAreaMapProps {
@@ -38,13 +42,20 @@ interface ShootingAreaMapProps {
   opportunities: ShootingOpportunity[];
   selectedId: string | null;
   onSelect: (_id: string) => void;
-  fitId?: number;
+  panRequest?: { id: string; requestId: number } | null;
+  initialViewport?: ShootingMapViewport | null;
+  onViewportChange?: (_viewport: ShootingMapViewport) => void;
 }
 
 const TARGET_COLOR = '#f59e0b';
-const PATH_COLOR = '#38bdf8';
+const PATH_COLOR = '#10b981';
 const ZONE_COLOR = '#f59e0b';
-const DIRECTION_COLOR = '#f43f5e';
+const BEARING_COLOR = '#f43f5e';
+const START_COLOR = '#22c55e';
+const END_COLOR = '#ef4444';
+const OPPORTUNITY_COLOR = '#38bdf8';
+const OPPORTUNITY_SELECTED_COLOR = '#f59e0b';
+const CLUSTER_COLOR = '#0ea5e9';
 
 function lineFeature(coordinates: Array<[number, number]>) {
   return {
@@ -77,16 +88,20 @@ export default function ShootingAreaMap({
   opportunities,
   selectedId,
   onSelect,
-  fitId = 0
+  panRequest = null,
+  initialViewport = null,
+  onViewportChange = () => {}
 }: ShootingAreaMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const targetMarkerRef = useRef<MapLibreMarker | null>(null);
   const cameraMarkerRefs = useRef<Map<string, MapLibreMarker>>(new Map());
+  const initialViewportRef = useRef(initialViewport);
   const [mapFailed, setMapFailed] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
 
-  const handlersRef = useRef({ onTargetMove, onAreaCameraMove, onSelect });
-  handlersRef.current = { onTargetMove, onAreaCameraMove, onSelect };
+  const handlersRef = useRef({ onTargetMove, onAreaCameraMove, onSelect, onViewportChange });
+  handlersRef.current = { onTargetMove, onAreaCameraMove, onSelect, onViewportChange };
 
   const dataRef = useRef({ target, area, cameraMarkers, highlight, opportunities, selectedId });
   dataRef.current = { target, area, cameraMarkers, highlight, opportunities, selectedId };
@@ -133,22 +148,21 @@ export default function ShootingAreaMap({
     return polyline;
   }, [area, isPathMode, highlight, pathGeometry]);
 
-  const directionLine = useMemo(() => {
-    if (!highlight) {
+  const selectedOpportunity = useMemo(
+    () => opportunities.find((opportunity) => opportunity.id === selectedId) ?? null,
+    [opportunities, selectedId]
+  );
+
+  const bearingLine = useMemo(() => {
+    if (!selectedOpportunity) {
       return null;
     }
-    const maxDistanceKm = cameraMarkers.reduce(
-      (max, marker) =>
-        Math.max(max, greatCircleDistanceKm(target.latitude, target.longitude, marker.latitude, marker.longitude)),
-      0
-    );
-    const lengthKm = Math.max(maxDistanceKm * 1.6, 1);
-    const endpoint = destinationPoint(target.latitude, target.longitude, highlight.directionAzimuth, lengthKm);
+    const position = selectedOpportunity.position;
     return [
       [target.longitude, target.latitude],
-      [endpoint.longitude, endpoint.latitude]
+      [position.longitude, position.latitude]
     ] as Array<[number, number]>;
-  }, [highlight, target, cameraMarkers]);
+  }, [target, selectedOpportunity]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -175,30 +189,48 @@ export default function ShootingAreaMap({
     mapRef.current = map;
 
     map.on('load', () => {
-      const imageData = buildCameraCanvas('#38bdf8').getContext('2d')?.getImageData(0, 0, 160, 160);
-      const selectedImageData = buildCameraCanvas('#f59e0b').getContext('2d')?.getImageData(0, 0, 160, 160);
-      if (imageData) {
-        map.addImage('opportunity-camera', imageData);
-      }
-      if (selectedImageData) {
-        map.addImage('opportunity-camera-selected', selectedImageData);
-      }
-
-      map.addSource('opportunities', { type: 'geojson', data: featureCollection([]) });
+      map.addSource('opportunities', {
+        type: 'geojson',
+        data: featureCollection([]),
+        cluster: true,
+        clusterMaxZoom: 14,
+        clusterRadius: 48
+      });
       map.addLayer({
-        id: 'opportunities-layer',
+        id: 'opportunity-clusters',
+        type: 'circle',
+        source: 'opportunities',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': CLUSTER_COLOR,
+          'circle-opacity': 0.22,
+          'circle-radius': 14,
+          'circle-stroke-color': CLUSTER_COLOR,
+          'circle-stroke-width': 2
+        }
+      });
+      map.addLayer({
+        id: 'opportunity-cluster-count',
         type: 'symbol',
         source: 'opportunities',
+        filter: ['has', 'point_count'],
         layout: {
-          'icon-image': [
-            'case',
-            ['==', ['get', 'selected'], 1],
-            'opportunity-camera-selected',
-            'opportunity-camera'
-          ],
-          'icon-anchor': 'bottom',
-          'icon-allow-overlap': true,
-          'icon-size': 0.45
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-size': 12,
+          'text-allow-overlap': true
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(2,6,23,0.9)', 'text-halo-width': 1 }
+      });
+      map.addLayer({
+        id: 'opportunity-dots',
+        type: 'circle',
+        source: 'opportunities',
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': ['case', ['==', ['get', 'selected'], 1], OPPORTUNITY_SELECTED_COLOR, OPPORTUNITY_COLOR],
+          'circle-radius': ['case', ['==', ['get', 'selected'], 1], 8, 4],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': ['case', ['==', ['get', 'selected'], 1], 2.5, 1.25]
         }
       });
 
@@ -207,7 +239,7 @@ export default function ShootingAreaMap({
         id: 'path-line',
         type: 'line',
         source: 'path-line',
-        paint: { 'line-color': PATH_COLOR, 'line-width': 3, 'line-dasharray': [1.5, 1.5] }
+        paint: { 'line-color': PATH_COLOR, 'line-width': 4.5 }
       });
 
       map.addSource('zone-line', { type: 'geojson', data: lineFeature([]) });
@@ -215,43 +247,80 @@ export default function ShootingAreaMap({
         id: 'zone-line',
         type: 'line',
         source: 'zone-line',
-        paint: { 'line-color': ZONE_COLOR, 'line-width': 6, 'line-opacity': 0.75 }
+        paint: { 'line-color': ZONE_COLOR, 'line-width': 6, 'line-opacity': 0.55 }
       });
 
-      map.addSource('direction-line', { type: 'geojson', data: lineFeature([]) });
+      map.addSource('bearing-line', { type: 'geojson', data: lineFeature([]) });
       map.addLayer({
-        id: 'direction-line',
+        id: 'bearing-line',
         type: 'line',
-        source: 'direction-line',
-        paint: { 'line-color': DIRECTION_COLOR, 'line-width': 2.5, 'line-dasharray': [4, 3] }
+        source: 'bearing-line',
+        paint: { 'line-color': BEARING_COLOR, 'line-width': 2.5, 'line-dasharray': [4, 3] }
       });
 
-      map.on('click', 'opportunities-layer', (event) => {
+      map.on('click', 'opportunity-dots', (event) => {
         const feature = event.features?.[0];
         if (feature?.properties?.id) {
           handlersRef.current.onSelect(String(feature.properties.id));
         }
       });
-      map.on('mouseenter', 'opportunities-layer', () => {
-        map.getCanvas().style.cursor = 'pointer';
+
+      map.on('click', 'opportunity-clusters', (event) => {
+        const feature = event.features?.[0];
+        const clusterId = feature?.properties?.cluster_id;
+        if (typeof clusterId !== 'number' || !feature) {
+          return;
+        }
+        const source = map.getSource('opportunities') as GeoJSONSource | undefined;
+        if (!source) {
+          return;
+        }
+        void source.getClusterExpansionZoom(clusterId).then((zoom) => {
+          const coordinates = (feature.geometry as GeoJSONPoint).coordinates as [number, number];
+          map.easeTo({ center: coordinates, zoom });
+        });
       });
-      map.on('mouseleave', 'opportunities-layer', () => {
-        map.getCanvas().style.cursor = '';
-      });
+
+      for (const layerId of ['opportunity-dots', 'opportunity-clusters']) {
+        map.on('mouseenter', layerId, () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', layerId, () => {
+          map.getCanvas().style.cursor = '';
+        });
+      }
 
       const targetBuilt = buildPinElement(TARGET_COLOR);
       targetBuilt.setAttribute('aria-label', 'Target');
+      const targetPopup = new maplibregl.Popup({ closeButton: false, offset: 18 });
       const targetMarker = new maplibregl.Marker({ element: targetBuilt, draggable: true, anchor: 'bottom' })
         .setLngLat([target.longitude, target.latitude])
+        .setPopup(targetPopup.setDOMContent(buildPointPopup(buildTargetTitle(targetName), target.latitude, target.longitude)))
         .addTo(map);
       targetMarker.on('drag', () => {
         const position = targetMarker.getLngLat();
         handlersRef.current.onTargetMove(position.lat, position.lng);
+        const popup = targetMarker.getPopup?.();
+        if (popup) {
+          popup.setDOMContent(buildPointPopup(buildTargetTitle(targetName), position.lat, position.lng));
+        }
       });
       targetMarkerRef.current = targetMarker;
 
       syncCameraMarkers(map, dataRef.current.cameraMarkers);
-      fitMap(map);
+
+      const storedViewport = initialViewportRef.current;
+      if (storedViewport) {
+        map.setZoom(storedViewport.zoom);
+        map.setCenter([storedViewport.longitude, storedViewport.latitude]);
+      } else {
+        fitMap(map);
+      }
+    });
+
+    map.on('moveend', () => {
+      const center = map.getCenter();
+      handlersRef.current.onViewportChange({ longitude: center.lng, latitude: center.lat, zoom: map.getZoom() });
     });
 
     return () => {
@@ -281,7 +350,7 @@ export default function ShootingAreaMap({
       }
       const popup = targetMarker.getPopup?.();
       if (popup) {
-        popup.setDOMContent(buildTargetPopup(targetName, current.target.latitude, current.target.longitude));
+        popup.setDOMContent(buildPointPopup(buildTargetTitle(targetName), current.target.latitude, current.target.longitude));
       }
     }
 
@@ -293,8 +362,8 @@ export default function ShootingAreaMap({
     const zoneSource = map.getSource('zone-line') as GeoJSONSource | undefined;
     zoneSource?.setData(lineFeature(zonePolyline ?? []));
 
-    const directionSource = map.getSource('direction-line') as GeoJSONSource | undefined;
-    directionSource?.setData(lineFeature(directionLine ?? []));
+    const bearingSource = map.getSource('bearing-line') as GeoJSONSource | undefined;
+    bearingSource?.setData(lineFeature(bearingLine ?? []));
 
     const opportunitiesSource = map.getSource('opportunities') as GeoJSONSource | undefined;
     opportunitiesSource?.setData(
@@ -305,16 +374,27 @@ export default function ShootingAreaMap({
       )
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, targetName, cameraMarkers, pathGeometry, zonePolyline, directionLine, opportunities, selectedId]);
+  }, [target, targetName, cameraMarkers, pathGeometry, zonePolyline, bearingLine, opportunities, selectedId]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) {
+    if (!map || !map.isStyleLoaded() || !panRequest) {
       return;
     }
-    fitMap(map);
+    const opportunity = dataRef.current.opportunities.find((item) => item.id === panRequest.id);
+    if (!opportunity) {
+      return;
+    }
+    const { latitude, longitude } = opportunity.position;
+    if (!map.getBounds().contains([longitude, latitude])) {
+      map.easeTo({
+        center: [longitude, latitude],
+        zoom: Math.max(map.getZoom(), 13),
+        duration: 500
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitId]);
+  }, [panRequest]);
 
   function syncCameraMarkers(map: MapLibreMap, markers: AreaCameraMarker[]) {
     const existing = cameraMarkerRefs.current;
@@ -330,14 +410,25 @@ export default function ShootingAreaMap({
     for (const marker of markers) {
       const existingMarker = existing.get(marker.id);
       if (!existingMarker) {
-        const element = buildCameraElement(marker.color ?? '#38bdf8');
+        const element =
+          marker.id === 'start'
+            ? buildAreaMarkerElement('S', START_COLOR)
+            : marker.id === 'end'
+              ? buildAreaMarkerElement('E', END_COLOR)
+              : buildCameraElement(0.8);
         element.setAttribute('aria-label', marker.label);
+        const popup = new maplibregl.Popup({ closeButton: false, offset: 14 });
         const created = new maplibregl.Marker({ element, draggable: true, anchor: 'bottom' })
           .setLngLat([marker.longitude, marker.latitude])
+          .setPopup(popup.setDOMContent(buildPointPopup(marker.label, marker.latitude, marker.longitude)))
           .addTo(map);
         created.on('drag', () => {
           const position = created.getLngLat();
           handlersRef.current.onAreaCameraMove(marker.id, position.lat, position.lng);
+          const popupRef = created.getPopup?.();
+          if (popupRef) {
+            popupRef.setDOMContent(buildPointPopup(marker.label, position.lat, position.lng));
+          }
         });
         existing.set(marker.id, created);
       } else {
@@ -347,6 +438,10 @@ export default function ShootingAreaMap({
           Math.abs(position.lng - marker.longitude) > 1e-9
         ) {
           existingMarker.setLngLat([marker.longitude, marker.latitude]);
+        }
+        const popup = existingMarker.getPopup?.();
+        if (popup) {
+          popup.setDOMContent(buildPointPopup(marker.label, marker.latitude, marker.longitude));
         }
       }
     }
@@ -368,6 +463,16 @@ export default function ShootingAreaMap({
     map.fitBounds(bounds, { padding: 70, maxZoom: 15, duration: 600 });
   }
 
+  const legendItems = [
+    { swatchClass: 'rounded-full border-2 border-white', swatchStyle: { backgroundColor: START_COLOR }, label: 'Start' },
+    { swatchClass: 'rounded-full border-2 border-white', swatchStyle: { backgroundColor: END_COLOR }, label: 'End' },
+    { swatchClass: 'rounded-full', swatchStyle: { backgroundColor: TARGET_COLOR }, label: 'Target' },
+    { swatchClass: 'h-1 rounded-full', swatchStyle: { backgroundColor: PATH_COLOR }, label: 'Shooting path' },
+    { swatchClass: 'h-0.5 rounded-full', swatchStyle: { backgroundColor: BEARING_COLOR }, label: 'Target bearing (selected)' },
+    { swatchClass: 'rounded-full border border-white', swatchStyle: { backgroundColor: OPPORTUNITY_COLOR }, label: 'Opportunity' },
+    { swatchClass: 'rounded-full border-2 border-white', swatchStyle: { backgroundColor: OPPORTUNITY_SELECTED_COLOR }, label: 'Selected opportunity' }
+  ];
+
   if (mapFailed) {
     return (
       <div
@@ -383,6 +488,29 @@ export default function ShootingAreaMap({
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-800">
       <div ref={containerRef} data-testid="shooting-area-map" className="h-[420px] w-full lg:h-[520px]" />
+      {legendOpen && (
+        <div
+          data-testid="shooting-area-legend"
+          className="absolute left-3 top-14 z-10 rounded-xl border border-slate-700 bg-slate-900/95 px-3 py-2.5 text-xs text-slate-200 shadow-lg"
+        >
+          <ul className="space-y-1.5">
+            {legendItems.map((item) => (
+              <li key={item.label} className="flex items-center gap-2">
+                <span className={`block h-3 w-3 shrink-0 ${item.swatchClass}`} style={item.swatchStyle} />
+                <span>{item.label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setLegendOpen((open) => !open)}
+        data-testid="shooting-area-legend-toggle"
+        className="absolute left-3 top-3 z-10 rounded-xl border border-slate-700 bg-slate-900/95 px-3 py-1.5 text-xs font-semibold text-slate-200 shadow-lg transition hover:border-slate-500 hover:text-white"
+      >
+        Legend
+      </button>
       <button
         type="button"
         onClick={() => fitMap(mapRef.current!)}
@@ -395,13 +523,17 @@ export default function ShootingAreaMap({
   );
 }
 
-function buildTargetPopup(name: string | null, latitude: number, longitude: number): HTMLElement {
+function buildTargetTitle(name: string | null): string {
+  return name ? `Target · ${name}` : 'Target';
+}
+
+function buildPointPopup(title: string, latitude: number, longitude: number): HTMLElement {
   const container = document.createElement('div');
   container.className = 'text-xs';
-  const title = document.createElement('p');
-  title.className = 'font-semibold';
-  title.textContent = name ? `Target · ${name}` : 'Target';
-  container.appendChild(title);
+  const titleNode = document.createElement('p');
+  titleNode.className = 'font-semibold';
+  titleNode.textContent = title;
+  container.appendChild(titleNode);
   const latitudeLine = document.createElement('p');
   latitudeLine.textContent = `Latitude: ${latitude.toFixed(6)}`;
   const longitudeLine = document.createElement('p');

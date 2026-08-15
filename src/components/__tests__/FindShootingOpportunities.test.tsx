@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import FindShootingOpportunities from '../FindShootingOpportunities';
+import { ShootingStateProvider } from '../../lib/opportunities/shootingState';
 import { DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { ASTRO_OBJECT } from '../../types/astronomy';
 import type { ShootingOpportunity } from '../../lib/opportunities/types';
@@ -14,9 +15,10 @@ vi.mock('../ShootingAreaMap', () => ({
     cameraMarkers: unknown[];
     opportunities: unknown[];
     selectedId: string | null;
-    highlight: { directionAzimuth: number } | null;
+    highlight: { zoneStartKm: number; zoneEndKm: number } | null;
     onTargetMove: (_lat: number, _lng: number) => void;
     onAreaCameraMove: (_id: string, _lat: number, _lng: number) => void;
+    panRequest?: { id: string; requestId: number } | null;
   }) => (
     <div
       data-testid="mock-shooting-area-map"
@@ -26,7 +28,9 @@ vi.mock('../ShootingAreaMap', () => ({
       data-camera-count={props.cameraMarkers.length}
       data-opp-count={props.opportunities?.length ?? 0}
       data-selected-id={props.selectedId ?? ''}
-      data-highlight-azimuth={props.highlight?.directionAzimuth ?? ''}
+      data-zone-start={props.highlight?.zoneStartKm ?? ''}
+      data-zone-end={props.highlight?.zoneEndKm ?? ''}
+      data-pan-request-id={props.panRequest?.id ?? ''}
     >
       <button onClick={() => props.onTargetMove(1.5, 104.2)}>simulate-target-move</button>
       <button onClick={() => props.onAreaCameraMove('start', 1.31, 103.88)}>simulate-area-move</button>
@@ -89,13 +93,15 @@ const MOON_OPPORTUNITIES = [moonOpportunity('moon-1', 'Full Moon'), moonOpportun
 function Harness() {
   const [target, setTarget] = useState(DEFAULT_TARGET);
   return (
-    <FindShootingOpportunities
-      target={target}
-      targetCoordinateError={null}
-      timeZone="Asia/Singapore"
-      timeZoneStatus="idle"
-      onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-    />
+    <ShootingStateProvider>
+      <FindShootingOpportunities
+        target={target}
+        targetCoordinateError={null}
+        timeZone="Asia/Singapore"
+        timeZoneStatus="idle"
+        onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+      />
+    </ShootingStateProvider>
   );
 }
 
@@ -227,14 +233,16 @@ describe('FindShootingOpportunities workspace', () => {
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
   });
 
-  it('selecting a result updates the selected opportunity', async () => {
+  it('selecting a result updates the selected opportunity and requests a pan', async () => {
     render(<Harness />);
     await searchAndWait();
 
     fireEvent.click(resultItems()[1]);
 
     expect(mapElement().getAttribute('data-selected-id')).toBe('opp-2');
-    expect(mapElement().getAttribute('data-highlight-azimuth')).toBe('76.4');
+    expect(mapElement().getAttribute('data-zone-start')).toBe('0.7');
+    expect(mapElement().getAttribute('data-zone-end')).toBe('1.1');
+    expect(mapElement().getAttribute('data-pan-request-id')).toBe('opp-2');
   });
 
   it('reports an error when the search fails', async () => {

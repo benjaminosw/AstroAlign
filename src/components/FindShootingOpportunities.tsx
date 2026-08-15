@@ -5,14 +5,15 @@ import dynamic from 'next/dynamic';
 import type { GeographicPoint, AstroObject } from '../types/astronomy';
 import { ASTRO_OBJECT } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
-import type { ShootingArea, ShootingAreaMode, ShootingAreaPoint, ShootingOpportunity } from '../lib/opportunities/types';
+import type { ShootingArea, ShootingAreaMode, ShootingAreaPoint } from '../lib/opportunities/types';
 import { findShootingOpportunities } from '../lib/opportunities/findShootingOpportunities';
 import { filterShootingOpportunities } from '../lib/opportunities/filterOpportunities';
 import { MOON_PHASE_BUCKETS } from '../lib/astronomy/lunarPhase';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
 import { destinationPoint } from '../lib/geometry/destinationPoint';
-import type { TimeFilterOption } from '../lib/alignment/timeFilter';
+import { ALL_MOON_PHASES, useShootingState } from '../lib/opportunities/shootingState';
+import type { SearchedInputs } from '../lib/opportunities/shootingState';
 import TargetLocationPicker from './TargetLocationPicker';
 import ShootingAreaControls from './ShootingAreaControls';
 import ShootingOpportunityResults from './ShootingOpportunityResults';
@@ -41,19 +42,6 @@ interface FindShootingOpportunitiesProps {
   onClearLandmark?: () => void;
 }
 
-type SearchedInputs = {
-  target: GeographicPoint;
-  object: AstroObject;
-  eventType: 'rise' | 'set';
-  startDate: string | null;
-  endDate: string | null;
-  toleranceDegrees: number;
-  area: ShootingArea;
-  landmarkName: string | null;
-};
-
-const ALL_MOON_PHASES = MOON_PHASE_BUCKETS.map((bucket) => bucket.name);
-
 function buildDefaultArea(target: GeographicPoint, mode: ShootingAreaMode): ShootingArea {
   if (mode === 'path') {
     const start = destinationPoint(target.latitude, target.longitude, 225, 1.4);
@@ -81,26 +69,52 @@ export default function FindShootingOpportunities({
   onSelectLandmark = () => {},
   onClearLandmark = () => {}
 }: FindShootingOpportunitiesProps) {
-  const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
-  const [eventType, setEventType] = useState<'rise' | 'set'>('rise');
-  const [startDate, setStartDate] = useState<string | null>(null);
-  const [endDate, setEndDate] = useState<string | null>(null);
-  const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
-  const [area, setAreaState] = useState<ShootingArea>(() => buildDefaultArea(target, 'path'));
-  const areaTouched = useRef(false);
-  const [fullMoonOnly, setFullMoonOnly] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<TimeFilterOption>('any');
-  const [customStartTime, setCustomStartTime] = useState('18:00');
-  const [customEndTime, setCustomEndTime] = useState('07:00');
-  const [selectedMoonPhases, setSelectedMoonPhases] = useState<string[]>(ALL_MOON_PHASES);
-  const [allOpportunities, setAllOpportunities] = useState<ShootingOpportunity[] | null>(null);
-  const [status, setStatus] = useState<'idle' | 'running' | 'completed'>('idle');
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lastSearchedInputs, setLastSearchedInputs] = useState<SearchedInputs | null>(null);
-  const [mapFitId, setMapFitId] = useState(0);
+  const {
+    object,
+    setObject,
+    eventType,
+    setEventType,
+    startDate,
+    setStartDate,
+    endDate,
+    setEndDate,
+    toleranceDegrees,
+    setToleranceDegrees,
+    area: storedArea,
+    setArea,
+    areaTouched,
+    setAreaTouched,
+    fullMoonOnly,
+    setFullMoonOnly,
+    timeFilter,
+    setTimeFilter,
+    customStartTime,
+    setCustomStartTime,
+    customEndTime,
+    setCustomEndTime,
+    selectedMoonPhases,
+    setSelectedMoonPhases,
+    allOpportunities,
+    setAllOpportunities,
+    status,
+    setStatus,
+    progress,
+    setProgress,
+    error,
+    setError,
+    lastSearchedInputs,
+    setLastSearchedInputs,
+    selectedId,
+    setSelectedId,
+    viewport,
+    setViewport,
+    resetFilters
+  } = useShootingState();
   const abortController = useRef<AbortController | null>(null);
+  const [panRequest, setPanRequest] = useState<{ id: string; requestId: number } | null>(null);
+
+  const defaultArea = useMemo(() => buildDefaultArea(target, 'path'), [target]);
+  const area = storedArea ?? defaultArea;
 
   useEffect(() => {
     if (startDate !== null && endDate !== null) {
@@ -116,18 +130,21 @@ export default function FindShootingOpportunities({
     if (endDate === null) {
       setEndDate(now.date);
     }
-  }, [timeZone, startDate, endDate]);
+  }, [timeZone, startDate, endDate, setStartDate, setEndDate]);
 
   useEffect(() => {
-    if (areaTouched.current) {
+    if (storedArea !== null && areaTouched) {
       return;
     }
-    setAreaState(buildDefaultArea(target, 'path'));
-  }, [target]);
+    if (storedArea !== null && isDeepEqual(storedArea, defaultArea)) {
+      return;
+    }
+    setArea(defaultArea);
+  }, [storedArea, areaTouched, defaultArea, setArea]);
 
-  function setArea(nextArea: ShootingArea) {
-    areaTouched.current = true;
-    setAreaState(nextArea);
+  function handleAreaChange(nextArea: ShootingArea) {
+    setArea(nextArea);
+    setAreaTouched(true);
   }
 
   const currentInputs: SearchedInputs = {
@@ -170,31 +187,30 @@ export default function FindShootingOpportunities({
     if (mode === 'path') {
       if (area.type === 'points' && area.points.length >= 2) {
         const [start, end] = area.points;
-        setArea({ type: 'path', start, end });
+        handleAreaChange({ type: 'path', start, end });
       } else {
-        setArea(buildDefaultArea(target, 'path'));
+        handleAreaChange(buildDefaultArea(target, 'path'));
       }
     } else {
       if (area.type === 'path') {
-        setArea({ type: 'points', points: [area.start] });
+        handleAreaChange({ type: 'points', points: [area.start] });
       } else {
-        setArea(buildDefaultArea(target, 'points'));
+        handleAreaChange(buildDefaultArea(target, 'points'));
       }
     }
-    setMapFitId((id) => id + 1);
   }
 
   function handleAreaCameraMove(id: string, latitude: number, longitude: number) {
     if (area.type === 'path') {
       const which = id === 'start' ? 'start' : 'end';
-      setArea({
+      handleAreaChange({
         type: 'path',
         start: which === 'start' ? { ...area.start, latitude, longitude } : area.start,
         end: which === 'end' ? { ...area.end, latitude, longitude } : area.end
       });
       return;
     }
-    setArea({
+    handleAreaChange({
       type: 'points',
       points: area.points.map((point) => (point.id === id ? { ...point, latitude, longitude } : point))
     });
@@ -207,7 +223,11 @@ export default function FindShootingOpportunities({
 
   function handleSelectLandmark(selected: SelectedLandmark) {
     onSelectLandmark(selected);
-    setMapFitId((id) => id + 1);
+  }
+
+  function handleSelectFromList(id: string) {
+    setSelectedId(id);
+    setPanRequest({ id, requestId: Date.now() });
   }
 
   async function search() {
@@ -302,14 +322,6 @@ export default function FindShootingOpportunities({
     searchedObject === ASTRO_OBJECT.Moon &&
     (timeFilter !== 'any' || fullMoonOnly || selectedMoonPhases.length !== ALL_MOON_PHASES.length);
 
-  function resetFilters() {
-    setSelectedMoonPhases(ALL_MOON_PHASES);
-    setTimeFilter('any');
-    setCustomStartTime('18:00');
-    setCustomEndTime('07:00');
-    setFullMoonOnly(false);
-  }
-
   function togglePhase(phaseName: string) {
     setSelectedMoonPhases((prev) =>
       prev.includes(phaseName) ? prev.filter((name) => name !== phaseName) : [...prev, phaseName]
@@ -323,7 +335,7 @@ export default function FindShootingOpportunities({
     if (selectedId !== null && !visibleOpportunities.some((opportunity) => opportunity.id === selectedId)) {
       setSelectedId(visibleOpportunities[0].id);
     }
-  }, [visibleOpportunities, selectedId, allOpportunities]);
+  }, [visibleOpportunities, selectedId, allOpportunities, setSelectedId]);
 
   const selectedOpportunity =
     visibleOpportunities.find((opportunity) => opportunity.id === selectedId) ?? visibleOpportunities[0] ?? null;
@@ -331,8 +343,7 @@ export default function FindShootingOpportunities({
   const highlight = selectedOpportunity
     ? {
         zoneStartKm: selectedOpportunity.position.zoneStartKm,
-        zoneEndKm: selectedOpportunity.position.zoneEndKm,
-        directionAzimuth: selectedOpportunity.objectAzimuth
+        zoneEndKm: selectedOpportunity.position.zoneEndKm
       }
     : null;
 
@@ -391,7 +402,9 @@ export default function FindShootingOpportunities({
         opportunities={visibleOpportunities}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        fitId={mapFitId}
+        panRequest={panRequest}
+        initialViewport={viewport}
+        onViewportChange={setViewport}
       />
 
       <div data-testid="shooting-columns" className="grid items-start gap-6 lg:grid-cols-2">
@@ -600,7 +613,7 @@ export default function FindShootingOpportunities({
           filtersActive={filtersActive}
           isCurrent={isCurrent}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={handleSelectFromList}
           onResetFilters={resetFilters}
         />
       </div>

@@ -27,7 +27,7 @@ export function buildPinElement(color: string): HTMLElement {
   return element;
 }
 
-export function buildCameraElement(color: string): HTMLElement {
+export function buildAreaMarkerElement(letter: 'S' | 'E', color: string): HTMLElement {
   const element = document.createElement('div');
   element.style.cssText = [
     'display:flex',
@@ -38,9 +38,9 @@ export function buildCameraElement(color: string): HTMLElement {
     'transition:filter 140ms ease'
   ].join(';');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 32 36');
-  svg.setAttribute('width', '28');
-  svg.setAttribute('height', '32');
+  svg.setAttribute('viewBox', '0 0 32 40');
+  svg.setAttribute('width', '26');
+  svg.setAttribute('height', '34');
   svg.setAttribute('aria-hidden', 'true');
   svg.style.cssText = [
     'display:block',
@@ -48,14 +48,38 @@ export function buildCameraElement(color: string): HTMLElement {
     'transform-origin:50% 100%'
   ].join(';');
   svg.innerHTML = [
-    `<path d="M12 7 L13 4 L19 4 L20 7 Z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.2"/>`,
-    `<path d="M7 7 h18 a3 3 0 0 1 3 3 v8 a3 3 0 0 1 -3 3 h-18 a3 3 0 0 1 -3 -3 v-8 a3 3 0 0 1 3 -3 z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.5"/>`,
-    '<circle cx="16" cy="12.5" r="4.5" fill="white"/>',
-    `<circle cx="16" cy="12.5" r="2.75" fill="${color}"/>`,
-    `<path d="M13 21 L7 35 M19 21 L25 35 M16 21 L16 35" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>`,
-    `<circle cx="7" cy="35" r="1.5" fill="${color}"/>`,
-    `<circle cx="25" cy="35" r="1.5" fill="${color}"/>`,
-    `<circle cx="16" cy="35" r="1.5" fill="${color}"/>`
+    `<path d="M16 2 C9 2 4 7 4 14 C4 22 16 38 16 38 C16 38 28 22 28 14 C28 7 23 2 16 2 Z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.5"/>`,
+    '<circle cx="16" cy="14" r="9" fill="white"/>',
+    `<text x="16" y="19" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="${color}">${letter}</text>`
+  ].join('');
+  element.appendChild(svg);
+  return element;
+}
+
+export function buildCameraElement(scale = 1): HTMLElement {
+  const element = document.createElement('div');
+  element.style.cssText = [
+    'display:flex',
+    'cursor:grab',
+    'user-select:none',
+    'touch-action:none',
+    'filter:drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))',
+    'transition:filter 140ms ease'
+  ].join(';');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 32 40');
+  svg.setAttribute('width', String(28 * scale));
+  svg.setAttribute('height', String(36 * scale));
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.cssText = [
+    'display:block',
+    'transition:transform 140ms ease',
+    'transform-origin:50% 100%'
+  ].join(';');
+  svg.innerHTML = [
+    `<path d="M16 1.5C8.8 1.5 3 7.3 3 14.5 3 23 16 38.5 16 38.5 16 38.5 29 23 29 14.5 29 7.3 23.2 1.5 16 1.5Z" fill="#ef4444" stroke="rgba(15,23,42,0.85)" stroke-width="1.5"/>`,
+    '<circle cx="16" cy="14" r="5.5" fill="white"/>',
+    '<circle cx="16" cy="14" r="3" fill="#ef4444"/>'
   ].join('');
   element.appendChild(svg);
   return element;

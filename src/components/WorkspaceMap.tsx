@@ -321,7 +321,7 @@ export default function WorkspaceMap({
         objectMarkerElementRef.current = objectElement;
       }
 
-      const observerBuilt = buildCameraElement(PIN_COLOR.observer);
+      const observerBuilt = buildCameraElement();
       observerBuilt.setAttribute('aria-label', 'Observer');
       const observerMarker = new maplibregl.Marker({ element: observerBuilt, draggable: true, anchor: 'bottom' })
         .setLngLat([observer.longitude, observer.latitude])

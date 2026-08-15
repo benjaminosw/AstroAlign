@@ -125,7 +125,11 @@ export default function ShootingOpportunityResults({
                 opportunity.moonPhase
                   ? 'grid-cols-[1.25rem_minmax(0,1fr)_minmax(0,1fr)_1.5rem]'
                   : 'grid-cols-[1.25rem_minmax(0,1fr)_minmax(0,1fr)]'
-              } ${opportunity.id === selectedId ? 'bg-violet-500/10 text-white' : 'text-slate-300 hover:bg-slate-800/60'}`}
+              } ${
+                opportunity.id === selectedId
+                  ? 'bg-violet-500/15 text-white ring-1 ring-violet-400/70'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
             >
               <span aria-hidden="true" className="text-center">
                 {opportunity.eventType === 'rise' ? '↑' : '↓'}
@@ -139,7 +143,7 @@ export default function ShootingOpportunityResults({
               <span className="min-w-0 text-right" title={positionHint(opportunity)}>
                 <span className="block truncate font-medium text-slate-200">{positionLabel(opportunity)}</span>
                 <span className="block whitespace-nowrap text-xs tabular-nums text-slate-400">
-                  {opportunity.position.alignmentError.toFixed(2)}°
+                  Alignment error: {opportunity.position.alignmentError.toFixed(2)}°
                 </span>
               </span>
               {opportunity.moonPhase && (

@@ -222,7 +222,7 @@ describe('AlignmentCalculator workspace', () => {
       fireEvent.change(screen.getByLabelText('Astronomical object'), { target: { value: 'Moon' } })
     );
     await recalcThenChange(() =>
-      fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-16' } })
+      fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } })
     );
     await recalcThenChange(() => fireEvent.click(screen.getByLabelText('Increase hour')));
     await recalcThenChange(() =>

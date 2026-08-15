@@ -9,6 +9,7 @@ import { validateCoordinates as validateCoordinateValues } from '../lib/timezone
 import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
 import FindShootingOpportunities from './FindShootingOpportunities';
+import { ShootingStateProvider } from '../lib/opportunities/shootingState';
 
 type TabId = 'calculate' | 'find' | 'shooting';
 
@@ -137,8 +138,9 @@ export default function AlignmentApp() {
   };
 
   return (
-    <div className="grid gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <ShootingStateProvider>
+      <div className="grid gap-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-900 p-1" role="tablist" aria-label="Alignment tools">
           {TABS.map((tab) => (
             <button
@@ -172,6 +174,7 @@ export default function AlignmentApp() {
           onClearLandmark={handleClearLandmark}
         />
       )}
-    </div>
+      </div>
+    </ShootingStateProvider>
   );
 }
