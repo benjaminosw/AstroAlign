@@ -1,292 +1,300 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
-import type { ReactNode } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import type { GeographicPoint } from '../types/astronomy';
-import type { SelectedLandmark } from '../lib/geocoding/types';
-import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
-import { formatTimezoneLabel } from '../lib/timezone/formatTimezoneLabel';
-import CoordinateField from './CoordinateField';
-import LandmarkSearch from './LandmarkSearch';
 
-const LocationMap = dynamic(() => import('./LocationMap'), {
-  ssr: false,
-  loading: () => (
-    <div data-testid="location-map-loading" className="h-[340px] w-full rounded-2xl border border-slate-800 bg-slate-900" />
-  )
-});
-
-type EditingLocation = 'observer' | 'target';
+export type LocationField = keyof GeographicPoint;
 
 interface LocationEditorProps {
-  observer: GeographicPoint;
-  target: GeographicPoint;
-  timeZone: string | null;
-  timeZoneStatus: 'idle' | 'loading' | 'error';
-  onObserverChange: (_field: keyof GeographicPoint, _value: string) => void;
-  onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
-  landmark?: SelectedLandmark | null;
-  onSelectLandmark?: (_landmark: SelectedLandmark) => void;
-  onClearLandmark?: () => void;
-  onInputErrorChange?: (_hasError: boolean) => void;
-  actions?: ReactNode;
+  idPrefix: string;
+  title: string;
+  icon: 'camera' | 'target';
+  values: GeographicPoint;
+  onChange: (_field: LocationField, _value: string) => void;
+  onErrorChange?: (_hasError: boolean) => void;
 }
 
-function noop() {}
+const FIELD_LABELS: Record<LocationField, string> = {
+  latitude: 'Latitude',
+  longitude: 'Longitude',
+  elevation: 'Elevation (m)'
+};
+
+const FIELD_ORDER: LocationField[] = ['latitude', 'longitude', 'elevation'];
+
+function formatCoordinate(value: number): string {
+  return String(Number(value.toFixed(10)));
+}
+
+function parseField(field: LocationField, raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  if (field === 'latitude' && (parsed < -90 || parsed > 90)) {
+    return null;
+  }
+  if (field === 'longitude' && (parsed < -180 || parsed > 180)) {
+    return null;
+  }
+  return parsed;
+}
+
+function errorMessage(field: LocationField): string {
+  if (field === 'latitude') {
+    return 'Latitude must be between -90° and 90°.';
+  }
+  if (field === 'longitude') {
+    return 'Longitude must be between -180° and 180°.';
+  }
+  return 'Elevation must be a valid number.';
+}
+
+function stringify(point: GeographicPoint): Record<LocationField, string> {
+  return {
+    latitude: String(point.latitude),
+    longitude: String(point.longitude),
+    elevation: String(point.elevation)
+  };
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+      <circle cx="12" cy="13" r="3" />
+    </svg>
+  );
+}
+
+function TargetIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
 
 export default function LocationEditor({
-  observer,
-  target,
-  timeZone,
-  timeZoneStatus,
-  onObserverChange,
-  onTargetChange,
-  landmark = null,
-  onSelectLandmark = noop,
-  onClearLandmark = noop,
-  onInputErrorChange = noop,
-  actions
+  idPrefix,
+  title,
+  icon,
+  values,
+  onChange,
+  onErrorChange = () => {}
 }: LocationEditorProps) {
-  const [editing, setEditing] = useState<EditingLocation>('observer');
-  const [hasInteracted, setHasInteracted] = useState(false);
-  const [mapFitId, setMapFitId] = useState(0);
-  const [fieldErrors, setFieldErrors] = useState({
-    observerLatitude: false,
-    observerLongitude: false,
-    targetLatitude: false,
-    targetLongitude: false
-  });
-  const firstRenderRef = useRef(true);
+  const [editing, setEditing] = useState(false);
+  const [drafts, setDrafts] = useState<Record<LocationField, string>>(() => stringify(values));
+  const latitudeRef = useRef<HTMLInputElement>(null);
+  const longitudeRef = useRef<HTMLInputElement>(null);
+  const elevationRef = useRef<HTMLInputElement>(null);
+  const inputRefs: Record<LocationField, RefObject<HTMLInputElement>> = {
+    latitude: latitudeRef,
+    longitude: longitudeRef,
+    elevation: elevationRef
+  };
 
-  const hasInputError = Object.values(fieldErrors).some((hasError) => hasError);
+  function computeErrors(current: Record<LocationField, string>): Record<LocationField, boolean> {
+    const result = {} as Record<LocationField, boolean>;
+    for (const field of FIELD_ORDER) {
+      result[field] = current[field].trim() !== '' && parseField(field, current[field]) === null;
+    }
+    return result;
+  }
 
-  useEffect(() => {
-    onInputErrorChange(hasInputError);
-  }, [hasInputError, onInputErrorChange]);
+  const errorMap = computeErrors(drafts);
 
-  useEffect(() => {
-    if (firstRenderRef.current) {
-      firstRenderRef.current = false;
+  function enterEdit(field?: LocationField) {
+    setDrafts(stringify(values));
+    setEditing(true);
+    onErrorChange(false);
+    if (field) {
+      const input = inputRefs[field].current;
+      input?.focus();
+      input?.select();
+    }
+  }
+
+  function handleDraftChange(field: LocationField, raw: string) {
+    const next = { ...drafts, [field]: raw };
+    setDrafts(next);
+    const nextErrors = computeErrors(next);
+    onErrorChange(FIELD_ORDER.some((item) => nextErrors[item]));
+  }
+
+  function commitEdit() {
+    const invalid = FIELD_ORDER.some((field) => parseField(field, drafts[field]) === null);
+    if (invalid) {
+      onErrorChange(true);
       return;
     }
-    setMapFitId((id) => id + 1);
-  }, [observer.latitude, observer.longitude, target.latitude, target.longitude]);
-
-  const localNow = timeZone ? getLocalDateTimeForTimeZone(timeZone) : null;
-  const formattedTimezone = timeZone && localNow ? formatTimezoneLabel(localNow.date, localNow.time, timeZone) : null;
-
-  function setFieldError(field: keyof typeof fieldErrors, hasError: boolean) {
-    setFieldErrors((prev) => ({ ...prev, [field]: hasError }));
+    for (const field of FIELD_ORDER) {
+      const parsed = parseField(field, drafts[field]);
+      if (parsed !== null && parsed !== values[field]) {
+        onChange(field, String(parsed));
+      }
+    }
+    setEditing(false);
+    onErrorChange(false);
   }
 
-  function handleObserverMove(latitude: number, longitude: number) {
-    setHasInteracted(true);
-    onObserverChange('latitude', String(latitude));
-    onObserverChange('longitude', String(longitude));
+  function cancelEdit() {
+    setDrafts(stringify(values));
+    setEditing(false);
+    onErrorChange(false);
   }
-
-  function handleTargetMove(latitude: number, longitude: number) {
-    setHasInteracted(true);
-    onTargetChange('latitude', String(latitude));
-    onTargetChange('longitude', String(longitude));
-  }
-
-  function handleActivate(location: EditingLocation) {
-    setHasInteracted(true);
-    setEditing(location);
-  }
-
-  function handleSelectLandmark(selected: SelectedLandmark) {
-    setHasInteracted(true);
-    onSelectLandmark(selected);
-  }
-
-  const selectedPoint = editing === 'observer' ? observer : target;
-  const selectedLabel = editing === 'observer' ? 'Observer' : 'Target';
-
-  const timezoneStatusNode =
-    timeZoneStatus === 'loading' ? (
-      <span className="text-xs text-slate-400">Detecting timezone…</span>
-    ) : timeZoneStatus === 'error' ? (
-      <span className="text-xs text-rose-300">Timezone unavailable</span>
-    ) : formattedTimezone ? (
-      <span
-        className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-medium text-slate-200"
-        title="Automatically detected from observer location"
-      >
-        {formattedTimezone}
-      </span>
-    ) : (
-      <span className="text-xs text-slate-500">Enter valid coordinates to detect timezone</span>
-    );
-
-  const landmarkSubtitle = landmark ? [landmark.locality, landmark.country].filter(Boolean).join(', ') : '';
-  const coordinatesAdjusted =
-    landmark !== null && (target.latitude !== landmark.latitude || target.longitude !== landmark.longitude);
 
   return (
-    <section data-testid="location-editor" className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold text-white">Location</h2>
-        {timezoneStatusNode}
-      </div>
-
-      <LocationMap
-        observer={observer}
-        target={target}
-        observerName={null}
-        targetName={landmark?.name ?? null}
-        activeLocation={editing}
-        onObserverMove={handleObserverMove}
-        onTargetMove={handleTargetMove}
-        onActivate={handleActivate}
-        fitId={mapFitId}
-      />
-
-      {!hasInteracted && (
-        <p data-testid="location-hint" className="text-xs text-slate-400">
-          Click or drag the map marker to reposition the selected location.
-        </p>
-      )}
-
-      <div
-        role="group"
-        aria-label="Edit location"
-        className="inline-flex rounded-2xl border border-slate-800 bg-slate-900 p-1"
-      >
-        <button
-          type="button"
-          role="button"
-          data-testid="editing-observer"
-          aria-pressed={editing === 'observer'}
-          onClick={() => setEditing('observer')}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-            editing === 'observer' ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          Observer
-        </button>
-        <button
-          type="button"
-          role="button"
-          data-testid="editing-target"
-          aria-pressed={editing === 'target'}
-          onClick={() => setEditing('target')}
-          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-            editing === 'target' ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          Target
-        </button>
-      </div>
-
-      <div
-        data-testid="selected-location-info"
-        className="rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3 text-sm"
-      >
-        <p className="font-semibold text-white">Editing: {selectedLabel}</p>
-        <p className="mt-0.5 text-xs tabular-nums text-slate-400">
-          {selectedPoint.latitude.toFixed(6)}, {selectedPoint.longitude.toFixed(6)} · Elevation{' '}
-          {selectedPoint.elevation.toFixed(1)} m
-        </p>
-      </div>
-
-      <div>
-        <p className="text-sm font-semibold text-slate-200">Observer location</p>
-        <div className="mt-3 space-y-4">
-          <CoordinateField
-            id="observer-latitude"
-            label="Latitude"
-            value={observer.latitude}
-            min={-90}
-            max={90}
-            onChange={(value) => onObserverChange('latitude', value)}
-            onError={(hasError) => setFieldError('observerLatitude', hasError)}
-          />
-          <CoordinateField
-            id="observer-longitude"
-            label="Longitude"
-            value={observer.longitude}
-            min={-180}
-            max={180}
-            onChange={(value) => onObserverChange('longitude', value)}
-            onError={(hasError) => setFieldError('observerLongitude', hasError)}
-          />
-          <CoordinateField
-            id="observer-elevation"
-            label="Elevation (m)"
-            value={observer.elevation}
-            onChange={(value) => onObserverChange('elevation', value)}
-          />
+    <section
+      data-testid={`${idPrefix}-location-editor`}
+      className={editing ? 'rounded-xl border border-sky-400/40 bg-slate-900/60 p-3' : ''}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {icon === 'camera' ? <CameraIcon /> : <TargetIcon />}
+          <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{title}</h3>
         </div>
+        <button
+          type="button"
+          aria-label={editing ? `Save ${title}` : `Edit ${title}`}
+          title={editing ? 'Save location' : 'Edit location'}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (editing) {
+              commitEdit();
+            } else {
+              enterEdit();
+            }
+          }}
+          className={`rounded-md p-1.5 transition ${
+            editing ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-400 hover:text-sky-300'
+          }`}
+        >
+          {editing ? <CheckIcon /> : <PencilIcon />}
+        </button>
       </div>
 
-      <div>
-        <p className="text-sm font-semibold text-slate-200">Target location</p>
-        <div className="mt-3 space-y-4">
-          <LandmarkSearch onSelect={handleSelectLandmark} ariaLabel="Landmark" />
-
-          {landmark && (
-            <div className="flex items-start justify-between gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3">
-              <div className="flex min-w-0 items-start gap-2">
-                <span aria-hidden="true" className="mt-0.5">
-                  🎯
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white">{landmark.name}</p>
-                  {landmarkSubtitle && <p className="mt-0.5 truncate text-xs text-slate-400">{landmarkSubtitle}</p>}
-                  {coordinatesAdjusted && (
-                    <p className="mt-1 text-xs font-medium text-amber-300">Coordinates manually adjusted</p>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onClearLandmark}
-                aria-label="Clear landmark"
-                title="Clear landmark"
-                className="rounded-lg px-2 py-0.5 text-lg leading-none text-slate-400 transition hover:bg-slate-800 hover:text-white"
-              >
-                ×
-              </button>
+      {editing ? (
+        <div className="mt-3 space-y-3">
+          {FIELD_ORDER.map((field) => (
+            <div key={field}>
+              <label htmlFor={`${idPrefix}-${field}`} className="text-sm text-slate-300">
+                {FIELD_LABELS[field]}
+              </label>
+              <input
+                ref={inputRefs[field]}
+                id={`${idPrefix}-${field}`}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                spellCheck={false}
+                value={drafts[field]}
+                aria-label={FIELD_LABELS[field]}
+                aria-invalid={errorMap[field]}
+                onChange={(event) => handleDraftChange(field, event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitEdit();
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    cancelEdit();
+                  }
+                }}
+                className={`mt-1 w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 ${
+                  errorMap[field]
+                    ? 'border-rose-500 focus:border-rose-400 focus:ring-rose-500/20'
+                    : 'border-slate-700 focus:border-sky-400 focus:ring-sky-500/20'
+                }`}
+              />
             </div>
+          ))}
+          {FIELD_ORDER.map((field) =>
+            errorMap[field] ? (
+              <p key={field} className="text-xs text-rose-300" role="alert">
+                {errorMessage(field)}
+              </p>
+            ) : null
           )}
-
-          <CoordinateField
-            id="target-latitude"
-            label="Latitude"
-            value={target.latitude}
-            min={-90}
-            max={90}
-            onChange={(value) => onTargetChange('latitude', value)}
-            onError={(hasError) => setFieldError('targetLatitude', hasError)}
-          />
-          <CoordinateField
-            id="target-longitude"
-            label="Longitude"
-            value={target.longitude}
-            min={-180}
-            max={180}
-            onChange={(value) => onTargetChange('longitude', value)}
-            onError={(hasError) => setFieldError('targetLongitude', hasError)}
-          />
-          <CoordinateField
-            id="target-elevation"
-            label="Elevation (m)"
-            value={target.elevation}
-            onChange={(value) => onTargetChange('elevation', value)}
-          />
         </div>
-      </div>
-
-      {hasInputError && (
-        <p className="text-sm text-rose-300" role="alert">
-          Enter valid coordinates to continue.
-        </p>
+      ) : (
+        <dl className="mt-3 space-y-1.5 text-sm">
+          {FIELD_ORDER.map((field) => (
+            <div key={field} className="flex items-baseline justify-between gap-3">
+              <dt className="text-slate-400">{FIELD_LABELS[field]}</dt>
+              <dd
+                className="tabular-nums text-slate-100"
+                title={`Double-click to edit ${FIELD_LABELS[field]}`}
+                onDoubleClick={() => enterEdit(field)}
+              >
+                {field === 'elevation' ? `${formatCoordinate(values.elevation)} m` : formatCoordinate(values[field])}
+              </dd>
+            </div>
+          ))}
+        </dl>
       )}
-
-      {actions && <div>{actions}</div>}
     </section>
   );
 }

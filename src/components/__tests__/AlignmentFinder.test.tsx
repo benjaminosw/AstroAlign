@@ -4,32 +4,57 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import AlignmentFinder from '../AlignmentFinder';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
+import { isTimeWithinWindow } from '../../lib/alignment/timeFilter';
+import type { SelectedLandmark } from '../../lib/geocoding/types';
 
 vi.mock('../../lib/geocoding/index', () => ({
   activeGeocoder: { search: vi.fn() }
 }));
 
-vi.mock('../LocationMap', () => ({
+vi.mock('../WorkspaceMap', () => ({
   __esModule: true,
   default: (props: {
+    className?: string;
     observer: { latitude: number; longitude: number };
     target: { latitude: number; longitude: number };
-    observerName?: string | null;
     targetName?: string | null;
     activeLocation: string;
     onObserverMove: (_latitude: number, _longitude: number) => void;
     onTargetMove: (_latitude: number, _longitude: number) => void;
     onActivate: (_location: string) => void;
     fitId?: number;
+    fitTarget?: 'both' | 'target';
+    alignment?: {
+      object: string;
+      objectAzimuth: number;
+      targetBearing: number;
+      angularSeparation: number;
+      toleranceDegrees: number;
+      withinTolerance: boolean;
+      azimuthLabel?: string;
+    } | null;
+    sun?: { object: string; azimuth: number } | null;
   }) => (
     <div
-      data-testid="mock-location-map"
+      data-testid="mock-workspace-map"
+      className={props.className}
       data-observer-lat={props.observer.latitude}
       data-observer-lon={props.observer.longitude}
       data-target-lat={props.target.latitude}
       data-target-lon={props.target.longitude}
       data-active-location={props.activeLocation}
       data-fit-id={props.fitId ?? 0}
+      data-fit-target={props.fitTarget ?? 'both'}
+      data-target-name={props.targetName ?? ''}
+      data-object={props.alignment?.object ?? ''}
+      data-azimuth-label={props.alignment?.azimuthLabel ?? ''}
+      data-object-azimuth={props.alignment?.objectAzimuth ?? 0}
+      data-target-bearing={props.alignment?.targetBearing ?? 0}
+      data-angular-separation={props.alignment?.angularSeparation ?? 0}
+      data-tolerance={props.alignment?.toleranceDegrees ?? 0}
+      data-within-tolerance={props.alignment?.withinTolerance ?? false}
+      data-sun-object={props.sun?.object ?? ''}
+      data-sun-azimuth={props.sun?.azimuth ?? 0}
     >
       <button onClick={() => props.onObserverMove(1.5, 104.2)}>simulate-observer-move</button>
       <button onClick={() => props.onTargetMove(2.1, 101.9)}>simulate-target-move</button>
@@ -37,54 +62,27 @@ vi.mock('../LocationMap', () => ({
   )
 }));
 
-vi.mock('../AlignmentMap', () => ({
-  __esModule: true,
-  default: (props: {
-    observer: { latitude: number; longitude: number };
-    target: { latitude: number; longitude: number };
-    object: string;
-    objectAzimuth: number;
-    targetBearing: number;
-    angularSeparation: number;
-    toleranceDegrees: number;
-    withinTolerance: boolean;
-    targetName?: string | null;
-    azimuthLabel?: string;
-    fitId?: number;
-  }) => (
-    <div
-      data-testid="mock-alignment-map"
-      data-object-azimuth={props.objectAzimuth}
-      data-target-bearing={props.targetBearing}
-      data-object={props.object}
-      data-angular-separation={props.angularSeparation}
-      data-tolerance={props.toleranceDegrees}
-      data-within-tolerance={props.withinTolerance}
-      data-observer-lat={props.observer.latitude}
-      data-observer-lon={props.observer.longitude}
-      data-target-lat={props.target.latitude}
-      data-target-lon={props.target.longitude}
-      data-target-name={props.targetName ?? ''}
-      data-azimuth-label={props.azimuthLabel ?? ''}
-      data-fit-id={props.fitId ?? 0}
-    />
-  )
-}));
-
 function Harness() {
   const [observer, setObserver] = useState(DEFAULT_OBSERVER);
   const [target, setTarget] = useState(DEFAULT_TARGET);
+  const [landmark, setLandmark] = useState<SelectedLandmark | null>(null);
   const observerCoordinateError = validateCoordinates(observer.latitude, observer.longitude);
 
   return (
     <AlignmentFinder
       observer={observer}
       target={target}
+      landmark={landmark}
       timeZone="Asia/Singapore"
       timeZoneStatus="idle"
       observerCoordinateError={observerCoordinateError}
       onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
       onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+      onSelectLandmark={(selected) => {
+        setLandmark(selected);
+        setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+      }}
+      onClearLandmark={() => setLandmark(null)}
     />
   );
 }
@@ -98,25 +96,30 @@ function searchedButton() {
 }
 
 function mapElement() {
-  return screen.getByTestId('mock-alignment-map');
+  return screen.getByTestId('mock-workspace-map');
 }
 
 async function waitForMap() {
-  return screen.findByTestId('mock-alignment-map', {}, { timeout: 3000 });
+  return screen.findByTestId('mock-workspace-map', {}, { timeout: 3000 });
+}
+
+function editObserverLatitude(value: string) {
+  fireEvent.click(screen.getByRole('button', { name: /edit observer location/i }));
+  fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value } });
+  fireEvent.keyDown(screen.getAllByLabelText('Latitude')[0], { key: 'Enter' });
 }
 
 function foundCountText() {
-  const element = screen.getByText(/^\d+ alignments? found$/i);
+  const element = screen.getByText(/^\d+ alignments?$/i);
   return Number(element.textContent?.match(/\d+/)?.[0]);
 }
 
-function labelOf(item: HTMLElement) {
-  const match = item.textContent?.match(/[↑↓] ([A-Za-z]+)/);
-  return match ? match[1] : '';
+function resultItems() {
+  return screen.getAllByTestId('alignment-result-item');
 }
 
-function resultItems() {
-  return screen.getAllByRole('listitem').map((item) => within(item).getByRole('button'));
+function eventLabelOf(item: HTMLElement) {
+  return item.children[1]?.textContent ?? '';
 }
 
 describe('AlignmentFinder workspace', () => {
@@ -127,18 +130,18 @@ describe('AlignmentFinder workspace', () => {
     expect(button.className).toContain('bg-emerald-500');
     expect(searchedButton()).toBeNull();
     expect(screen.getByText('Results will appear here after you search.')).toBeTruthy();
-    expect(screen.queryByTestId('mock-alignment-map')).toBeNull();
-    expect(screen.queryByRole('listitem')).toBeNull();
+    expect(screen.queryByTestId('alignment-result-item')).toBeNull();
+    expect(screen.queryByTestId('editing-observer')).toBeNull();
   });
 
-  it('shows results, marks inputs as searched, and auto-selects the first result on the map', async () => {
+  it('shows compact results, marks inputs as searched, and auto-selects the first result on the map', async () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
 
-    const found = await screen.findByText(/alignments? found/i, {}, { timeout: 5000 });
-    expect(found.textContent).toMatch(/[1-9]\d* alignments? found/);
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    expect(foundCountText()).toBeGreaterThanOrEqual(1);
     expect(searchedButton()?.className).toContain('bg-slate-700');
     expect(screen.queryByText(/inputs changed/i)).toBeNull();
 
@@ -149,15 +152,39 @@ describe('AlignmentFinder workspace', () => {
 
     const map = await waitForMap();
     expect(map.getAttribute('data-object')).toBe('Sun');
-    expect(map.getAttribute('data-azimuth-label')).toBe(`${labelOf(items[0])} azimuth`);
+    expect(map.getAttribute('data-azimuth-label')).toBe(`${eventLabelOf(items[0])} azimuth`);
     expect(Number(map.getAttribute('data-object-azimuth'))).toBeGreaterThan(0);
     expect(Number(map.getAttribute('data-target-bearing'))).toBeGreaterThan(0);
     expect(map.getAttribute('data-observer-lat')).toBe(String(DEFAULT_OBSERVER.latitude));
     expect(map.getAttribute('data-observer-lon')).toBe(String(DEFAULT_OBSERVER.longitude));
     expect(map.getAttribute('data-target-lat')).toBe(String(DEFAULT_TARGET.latitude));
     expect(map.getAttribute('data-target-lon')).toBe(String(DEFAULT_TARGET.longitude));
-    expect(Number(map.getAttribute('data-fit-id'))).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Selected:/i)).toBeTruthy();
+    expect(map.getAttribute('data-fit-id')).toBe('0');
+  });
+
+  it('renders each result row with arrow, event, dd/mm/yyyy date, time, and error', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.click(findButton());
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+
+    const items = resultItems();
+    expect(items.length).toBeGreaterThan(0);
+
+    for (const item of items) {
+      const arrow = item.children[0].textContent;
+      const event = item.children[1].textContent ?? '';
+      expect(arrow === '↑' || arrow === '↓').toBe(true);
+      if (event.toLowerCase().includes('rise')) {
+        expect(arrow).toBe('↑');
+      } else if (event.toLowerCase().includes('set')) {
+        expect(arrow).toBe('↓');
+      }
+      expect(within(item).getByText(/^\d{2}\/\d{2}\/\d{4}$/)).toBeTruthy();
+      expect(within(item).getByText(/^\d{2}:\d{2}:\d{2}$/)).toBeTruthy();
+      expect(within(item).getByText(/^\d+\.\d{2}°/)).toBeTruthy();
+    }
   });
 
   it('marks inputs as changed after a search while keeping the previous results and map visible', async () => {
@@ -165,7 +192,7 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/alignments? found/i, {}, { timeout: 5000 });
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
     const map = await waitForMap();
     const azimuthBefore = map.getAttribute('data-object-azimuth');
 
@@ -180,29 +207,53 @@ describe('AlignmentFinder workspace', () => {
     expect(mapElement().getAttribute('data-observer-lat')).toBe(String(DEFAULT_OBSERVER.latitude));
   });
 
-  it('uses a two-column desktop layout with controls on the left and results on the right', () => {
+  it('stacks location, full-width map, then settings and results side by side', async () => {
     render(<Harness />);
+    await waitForMap();
 
     const workspace = screen.getByTestId('finder-workspace');
-    expect(workspace.className).toContain('lg:grid-cols-[');
+    expect(workspace.className).toContain('space-y-6');
 
-    const columns = Array.from(workspace.children) as HTMLElement[];
-    expect(columns).toHaveLength(2);
-    expect(within(columns[0]).getByText('Observer')).toBeTruthy();
-    expect(within(columns[0]).getByText('Search')).toBeTruthy();
-    expect(columns[0].className).toContain('lg:sticky');
-    expect(within(columns[1]).getByText('Search results')).toBeTruthy();
+    const sections = Array.from(workspace.children) as HTMLElement[];
+    expect(sections.map((el) => el.getAttribute('data-testid'))).toEqual([
+      'location-controls',
+      'mock-workspace-map',
+      'alignment-columns'
+    ]);
+    expect(sections[1].className).toContain('lg:h-[620px]');
+    expect(within(sections[0]).getByText('Location')).toBeTruthy();
+
+    const columns = Array.from(sections[2].children) as HTMLElement[];
+    expect(columns.map((el) => el.getAttribute('data-testid'))).toEqual([
+      'alignment-settings-card',
+      'alignment-results-card'
+    ]);
+    expect(sections[2].className).toContain('lg:grid-cols-2');
+    expect(within(columns[0]).getByText('Alignment settings')).toBeTruthy();
+    expect(within(columns[1]).getByText('Alignment results')).toBeTruthy();
   });
 
-  it('updates the map to the selected result and refits when a different result is chosen', async () => {
+  it('passes the selected event azimuth to the map as the sun direction', async () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/alignments? found/i, {}, { timeout: 5000 });
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
     const map = await waitForMap();
-    const fitBefore = Number(map.getAttribute('data-fit-id'));
-    expect(Number(fitBefore)).toBeGreaterThanOrEqual(1);
+
+    expect(map.getAttribute('data-sun-object')).toBe('Sun');
+    expect(Number(map.getAttribute('data-sun-azimuth'))).toBeGreaterThan(0);
+    expect(map.getAttribute('data-sun-azimuth')).toBe(map.getAttribute('data-object-azimuth'));
+  });
+
+  it('updates the map to the selected result without moving the viewport', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.click(findButton());
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    const map = await waitForMap();
+    const fitBefore = map.getAttribute('data-fit-id');
 
     const items = resultItems();
     expect(items.length).toBeGreaterThanOrEqual(2);
@@ -211,18 +262,35 @@ describe('AlignmentFinder workspace', () => {
     const mapAfter = mapElement();
     const itemsAfter = resultItems();
     expect(itemsAfter[1].getAttribute('aria-pressed')).toBe('true');
-    expect(mapAfter.getAttribute('data-azimuth-label')).toBe(`${labelOf(itemsAfter[1])} azimuth`);
-    expect(Number(mapAfter.getAttribute('data-fit-id'))).toBeGreaterThan(fitBefore);
+    expect(mapAfter.getAttribute('data-azimuth-label')).toBe(`${eventLabelOf(itemsAfter[1])} azimuth`);
+    expect(mapAfter.getAttribute('data-fit-id')).toBe(fitBefore);
     expect(mapAfter.getAttribute('data-observer-lat')).toBe(String(DEFAULT_OBSERVER.latitude));
     expect(mapAfter.getAttribute('data-target-lon')).toBe(String(DEFAULT_TARGET.longitude));
   });
 
-  it('filters the list to matches within tolerance when the toggle is on', async () => {
+  it('does not move the viewport when a marker is dragged after a search', async () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/alignments? found/i, {}, { timeout: 5000 });
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+    await waitForMap();
+    const fitBefore = mapElement().getAttribute('data-fit-id');
+
+    fireEvent.click(screen.getByText('simulate-observer-move'));
+
+    expect(mapElement().getAttribute('data-observer-lat')).toBe('1.5');
+    expect(mapElement().getAttribute('data-observer-lon')).toBe('104.2');
+    expect(mapElement().getAttribute('data-fit-id')).toBe(fitBefore);
+    expect(screen.getByText(/location changed/i)).toBeTruthy();
+  });
+
+  it('filters the results to matches within tolerance when the toggle is on', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.click(findButton());
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
     expect(foundCountText()).toBeGreaterThanOrEqual(2);
     expect(resultItems()).toHaveLength(foundCountText());
 
@@ -234,9 +302,6 @@ describe('AlignmentFinder workspace', () => {
     } else {
       const items = resultItems();
       expect(items).toHaveLength(filteredCount);
-      for (const item of items) {
-        expect(item.textContent).toContain('Match');
-      }
       expect(items.filter((item) => item.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
     }
   });
@@ -246,28 +311,110 @@ describe('AlignmentFinder workspace', () => {
 
     fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
     fireEvent.click(findButton());
-    await screen.findByText(/alignments? found/i, {}, { timeout: 5000 });
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
     const map = await waitForMap();
     const azimuthBefore = map.getAttribute('data-object-azimuth');
 
-    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    editObserverLatitude('1.5');
 
     expect(screen.getByText(/location changed/i)).toBeTruthy();
     expect(screen.queryByText(/inputs changed/i)).toBeNull();
     expect(findButton()).toBeTruthy();
     expect(resultItems().length).toBeGreaterThan(0);
     expect(mapElement().getAttribute('data-object-azimuth')).toBe(azimuthBefore);
-    expect(mapElement().getAttribute('data-observer-lat')).toBe(String(DEFAULT_OBSERVER.latitude));
+    expect(mapElement().getAttribute('data-observer-lat')).toBe('1.5');
   });
 
   it('shows a validation error and does not search when coordinates are invalid', () => {
     render(<Harness />);
 
+    fireEvent.click(screen.getByRole('button', { name: /edit observer location/i }));
     fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '200' } });
+    expect(screen.getAllByText(/latitude must be between/i).length).toBeGreaterThan(0);
+
     fireEvent.click(findButton());
 
-    expect(screen.getAllByText(/latitude must be between/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/enter valid coordinates to search/i)).toBeTruthy();
     expect(searchedButton()).toBeNull();
     expect(screen.getByText('Results will appear here after you search.')).toBeTruthy();
+  });
+
+  it('shows the moon phase on Moon results and none on Sun results', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
+    fireEvent.change(screen.getByLabelText('Search from'), { target: { value: '2025-09-20' } });
+    fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
+    fireEvent.click(findButton());
+
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+
+    const phaseCells = screen.getAllByTestId('moon-phase');
+    expect(phaseCells.length).toBeGreaterThan(0);
+    for (const cell of phaseCells) {
+      expect(cell.getAttribute('data-phase-name')).toMatch(
+        /^(New Moon|Waxing Crescent|First Quarter|Waxing Gibbous|Full Moon|Waning Gibbous|Last Quarter|Waning Crescent)$/
+      );
+      expect(cell.textContent).toMatch(/🌑|🌒|🌓|🌔|🌕|🌖|🌗|🌘/);
+    }
+
+    fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Sun' } });
+    fireEvent.click(findButton());
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+
+    expect(screen.queryAllByTestId('moon-phase')).toHaveLength(0);
+  });
+
+  it('shows the time filter for the Moon and hides it for the Sun', () => {
+    render(<Harness />);
+
+    expect(screen.queryByLabelText('Time filter')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
+
+    expect(screen.getByLabelText('Time filter')).toBeTruthy();
+  });
+
+  it('filters Moon results to the night window', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
+    fireEvent.change(screen.getByLabelText('Search from'), { target: { value: '2025-09-20' } });
+    fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
+    fireEvent.change(screen.getByLabelText('Time filter'), { target: { value: 'night' } });
+    fireEvent.click(findButton());
+
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+
+    const items = resultItems();
+    expect(items.length).toBe(4);
+    for (const item of items) {
+      const time = within(item).getByText(/^\d{2}:\d{2}:\d{2}$/).textContent ?? '';
+      expect(isTimeWithinWindow(time, { start: '18:00', end: '07:00' })).toBe(true);
+    }
+  });
+
+  it('applies a custom crossing-midnight time window to Moon results', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByLabelText('Show only matches within tolerance'));
+    fireEvent.change(screen.getByLabelText('Object'), { target: { value: 'Moon' } });
+    fireEvent.change(screen.getByLabelText('Search from'), { target: { value: '2025-09-20' } });
+    fireEvent.change(screen.getByLabelText('Search until'), { target: { value: '2025-09-22' } });
+    fireEvent.change(screen.getByLabelText('Time filter'), { target: { value: 'custom' } });
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '18:00' } });
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '07:00' } });
+    fireEvent.click(findButton());
+
+    await screen.findByText(/^\d+ alignments?$/, {}, { timeout: 5000 });
+
+    const items = resultItems();
+    expect(items.length).toBe(4);
+    for (const item of items) {
+      const time = within(item).getByText(/^\d{2}:\d{2}:\d{2}$/).textContent ?? '';
+      expect(isTimeWithinWindow(time, { start: '18:00', end: '07:00' })).toBe(true);
+    }
   });
 });

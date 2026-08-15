@@ -8,14 +8,20 @@ import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/ast
 import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
-import LocationEditor from './LocationEditor';
+import { formatResultDate } from '../lib/utils/formatResultDate';
+import LocationControls from './LocationControls';
 import TolerancePicker from './TolerancePicker';
+import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
+import type { TimeFilterOption } from '../lib/alignment/timeFilter';
 
-const AlignmentMap = dynamic(() => import('./AlignmentMap'), {
+const WorkspaceMap = dynamic(() => import('./WorkspaceMap'), {
   ssr: false,
   loading: () => (
-    <div data-testid="alignment-map-loading" className="h-[420px] w-full rounded-2xl border border-slate-800 bg-slate-900" />
+    <div
+      data-testid="workspace-map-loading"
+      className="h-[460px] w-full rounded-2xl border border-slate-800 bg-slate-900 lg:h-[620px]"
+    />
   )
 });
 
@@ -40,6 +46,9 @@ type SearchedInputs = {
   endDate: string | null;
   toleranceDegrees: number;
   fullMoonOnly: boolean;
+  timeFilter: TimeFilterOption;
+  customStartTime: string;
+  customEndTime: string;
   landmarkName: string | null;
 };
 
@@ -59,8 +68,12 @@ export default function AlignmentFinder({
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
   const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
+  const [activeMarker, setActiveMarker] = useState<'observer' | 'target'>('observer');
   const [showMatchesOnly, setShowMatchesOnly] = useState(true);
   const [fullMoonOnly, setFullMoonOnly] = useState(false);
+  const [timeFilter, setTimeFilter] = useState<TimeFilterOption>('any');
+  const [customStartTime, setCustomStartTime] = useState('18:00');
+  const [customEndTime, setCustomEndTime] = useState('07:00');
   const [results, setResults] = useState<AlignmentCandidate[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'running' | 'completed'>('idle');
   const [progress, setProgress] = useState(0);
@@ -95,6 +108,9 @@ export default function AlignmentFinder({
     endDate,
     toleranceDegrees,
     fullMoonOnly,
+    timeFilter: object === ASTRO_OBJECT.Moon ? timeFilter : 'any',
+    customStartTime: object === ASTRO_OBJECT.Moon ? customStartTime : '',
+    customEndTime: object === ASTRO_OBJECT.Moon ? customEndTime : '',
     landmarkName: landmark?.name ?? null
   };
 
@@ -162,6 +178,9 @@ export default function AlignmentFinder({
         toleranceDegrees,
         timeZone,
         fullMoonOnly,
+        timeFilter,
+        customStartTime,
+        customEndTime,
         signal: controller.signal,
         onProgress: (completed, total) => {
           setProgress((completed / total) * 100);
@@ -183,7 +202,6 @@ export default function AlignmentFinder({
       setResults(sorted);
       setLastSearchedInputs({ ...currentInputs, landmarkName: landmark?.name ?? null });
       setSelectedIndex(firstVisibleIndex >= 0 ? firstVisibleIndex : null);
-      setMapFitId((id) => id + 1);
       setStatus('completed');
     } catch (searchError) {
       setError((searchError as Error).message === 'Search canceled' ? 'Search canceled.' : (searchError as Error).message);
@@ -205,85 +223,160 @@ export default function AlignmentFinder({
     }
     if (selectedIndex !== null && visibleResults[selectedIndex] === undefined) {
       setSelectedIndex(0);
-      setMapFitId((id) => id + 1);
     }
   }, [visibleResults, selectedIndex, results]);
 
   const selectedCandidate = visibleResults && selectedIndex !== null ? visibleResults[selectedIndex] ?? null : null;
 
+  function handleSelectLandmark(selected: SelectedLandmark) {
+    onSelectLandmark(selected);
+    setMapFitId((id) => id + 1);
+  }
+
+  function handleObserverMove(latitude: number, longitude: number) {
+    onObserverChange('latitude', String(latitude));
+    onObserverChange('longitude', String(longitude));
+  }
+
+  function handleTargetMove(latitude: number, longitude: number) {
+    onTargetChange('latitude', String(latitude));
+    onTargetChange('longitude', String(longitude));
+  }
+
+  const selectedAlignment =
+    selectedCandidate && lastSearchedInputs
+      ? {
+          object: lastSearchedInputs.object,
+          objectAzimuth: selectedCandidate.object.azimuth,
+          targetBearing: selectedCandidate.target.bearing,
+          targetDistanceKm: selectedCandidate.target.distanceKm,
+          angularSeparation: selectedCandidate.alignment.angularSeparation,
+          toleranceDegrees: lastSearchedInputs.toleranceDegrees,
+          withinTolerance: selectedCandidate.alignment.withinTolerance,
+          azimuthLabel: `${selectedCandidate.eventLabel} azimuth`
+        }
+      : null;
+
   return (
-    <div
-      data-testid="finder-workspace"
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,11fr)]"
-    >
-      <div className="space-y-6 lg:sticky lg:top-8">
-        <LocationEditor
-          observer={observer}
-          target={target}
-          landmark={landmark}
-          timeZone={timeZone}
-          timeZoneStatus={timeZoneStatus}
-          onObserverChange={onObserverChange}
-          onTargetChange={onTargetChange}
-          onSelectLandmark={onSelectLandmark}
-          onClearLandmark={onClearLandmark}
-          onInputErrorChange={setLocationInputError}
-        />
+    <div data-testid="finder-workspace" className="space-y-6">
+      <LocationControls
+        observer={observer}
+        target={target}
+        landmark={landmark}
+        timeZone={timeZone}
+        timeZoneStatus={timeZoneStatus}
+        onObserverChange={onObserverChange}
+        onTargetChange={onTargetChange}
+        onSelectLandmark={handleSelectLandmark}
+        onClearLandmark={onClearLandmark}
+        onInputErrorChange={setLocationInputError}
+      />
 
-        <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Search</h2>
+      <WorkspaceMap
+        observer={observer}
+        target={target}
+        targetName={landmark?.name ?? null}
+        activeLocation={activeMarker}
+        onObserverMove={handleObserverMove}
+        onTargetMove={handleTargetMove}
+        onActivate={setActiveMarker}
+        fitId={mapFitId}
+        fitTarget="target"
+        alignment={selectedAlignment}
+        sun={
+          selectedCandidate && lastSearchedInputs
+            ? { object: lastSearchedInputs.object, azimuth: selectedCandidate.object.azimuth }
+            : null
+        }
+        className="h-[460px] lg:h-[620px]"
+      />
 
-          <div>
-            <label htmlFor="find-object" className="text-sm text-slate-300">
-              Object
-            </label>
-            <select
-              id="find-object"
-              value={object}
-              onChange={(event) => setObject(event.target.value as AstroObject)}
-              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-            >
-              <option value={ASTRO_OBJECT.Sun}>Sun</option>
-              <option value={ASTRO_OBJECT.Moon}>Moon</option>
-            </select>
-          </div>
+      <div data-testid="alignment-columns" className="grid items-start gap-6 lg:grid-cols-2">
+        <section data-testid="alignment-settings-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment settings</h2>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 space-y-4">
             <div>
-              <label htmlFor="find-start" className="text-sm text-slate-300">
-                Search from
+              <label htmlFor="find-object" className="text-sm text-slate-300">
+                Object
               </label>
-              <input
-                id="find-start"
-                type="date"
-                value={startDate ?? ''}
-                onChange={(event) => setStartDate(event.target.value)}
+              <select
+                id="find-object"
+                value={object}
+                onChange={(event) => setObject(event.target.value as AstroObject)}
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-              />
+              >
+                <option value={ASTRO_OBJECT.Sun}>Sun</option>
+                <option value={ASTRO_OBJECT.Moon}>Moon</option>
+              </select>
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="find-start" className="text-sm text-slate-300">
+                  Search from
+                </label>
+                <input
+                  id="find-start"
+                  type="date"
+                  value={startDate ?? ''}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                />
+              </div>
+              <div>
+                <label htmlFor="find-end" className="text-sm text-slate-300">
+                  Search until
+                </label>
+                <input
+                  id="find-end"
+                  type="date"
+                  value={endDate ?? ''}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                />
+              </div>
+            </div>
+
+            {object === ASTRO_OBJECT.Moon && (
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-sm text-slate-300">
+                  <input
+                    id="find-full-moon"
+                    type="checkbox"
+                    checked={fullMoonOnly}
+                    onChange={(event) => setFullMoonOnly(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                  />
+                  Full Moon ±1 day only
+                </label>
+
+                <div>
+                  <label htmlFor="find-time-filter" className="text-sm text-slate-300">
+                    Time filter
+                  </label>
+                  <TimeFilterPicker
+                    option={timeFilter}
+                    customStartTime={customStartTime}
+                    customEndTime={customEndTime}
+                    onOptionChange={setTimeFilter}
+                    onCustomStartChange={setCustomStartTime}
+                    onCustomEndChange={setCustomEndTime}
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
-              <label htmlFor="find-end" className="text-sm text-slate-300">
-                Search until
+              <label htmlFor="find-tolerance" className="text-sm text-slate-300">
+                Maximum azimuth difference
               </label>
-              <input
-                id="find-end"
-                type="date"
-                value={endDate ?? ''}
-                onChange={(event) => setEndDate(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-              />
+              <TolerancePicker id="find-tolerance" value={toleranceDegrees} onChange={setToleranceDegrees} />
+              <p className="mt-2 text-xs text-slate-500">
+                Search uses rise/set azimuth only; altitude is not used to match events.
+              </p>
             </div>
-          </div>
 
-          <div>
-            <label htmlFor="find-tolerance" className="text-sm text-slate-300">
-              Maximum azimuth difference
-            </label>
-            <TolerancePicker id="find-tolerance" value={toleranceDegrees} onChange={setToleranceDegrees} />
-            <p className="mt-2 text-xs text-slate-500">Search uses rise/set azimuth only; altitude is not used to match events.</p>
-          </div>
-
-          <div className="space-y-3">
             <label className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-sm text-slate-300">
               <input
                 type="checkbox"
@@ -294,173 +387,115 @@ export default function AlignmentFinder({
               Show only matches within tolerance
             </label>
 
-            {object === ASTRO_OBJECT.Moon && (
-              <label className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-sm text-slate-300">
-                <input
-                  id="find-full-moon"
-                  type="checkbox"
-                  checked={fullMoonOnly}
-                  onChange={(event) => setFullMoonOnly(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500"
-                />
-                Full Moon ±1 day only
-              </label>
-            )}
-          </div>
+            <div className="flex flex-wrap items-start gap-4">
+              <StateButton
+                state={isCurrent ? 'current' : 'needsAction'}
+                onClick={search}
+                needsActionLabel="Find alignments"
+                currentLabel="✓ Searched"
+                running={status === 'running'}
+                runningLabel="Searching…"
+                accentClasses="bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+                testId="find-button"
+              />
 
-          <StateButton
-            state={isCurrent ? 'current' : 'needsAction'}
-            onClick={search}
-            needsActionLabel="Find alignments"
-            currentLabel="✓ Searched"
-            running={status === 'running'}
-            runningLabel="Searching…"
-            accentClasses="bg-emerald-500 text-slate-950 hover:bg-emerald-400"
-            testId="find-button"
-          />
-        </section>
-      </div>
-
-      <section className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Search results</p>
-          {results !== null && (
-            <p className="text-2xl font-semibold text-white">
-              {visibleResults?.length ?? 0} alignment{(visibleResults?.length ?? 0) === 1 ? '' : 's'} found
-            </p>
-          )}
-        </div>
-
-        {status === 'running' && (
-          <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-200">
-            <div className="flex items-center justify-between">
-              <p>Searching for alignments…</p>
-              <button
-                type="button"
-                onClick={cancelSearch}
-                className="rounded-xl bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-slate-700"
-              >
-                Cancel Search
-              </button>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
-              <div className="h-full rounded-full bg-sky-500" style={{ width: `${progress}%` }} />
-            </div>
-            <p className="mt-2 text-xs text-slate-400">{Math.round(progress)}% complete</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-3 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200">{error}</div>
-        )}
-
-        {results && !isCurrent && (
-          <div
-            role="status"
-            className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
-          >
-            {locationChanged
-              ? '⚠ Location changed — recalculate alignments. These results were calculated for the previous location.'
-              : '⚠ Inputs changed — search again to update these results. The map shows the last searched alignment.'}
-          </div>
-        )}
-
-        {results === null ? (
-          status !== 'running' ? (
-            <p className="mt-4 text-sm text-slate-500">Results will appear here after you search.</p>
-          ) : null
-        ) : visibleResults === null || visibleResults.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No alignments found within the selected range and tolerance.</p>
-        ) : (
-          <div className="mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)]">
-            <div className="lg:max-h-[560px] lg:overflow-y-auto lg:pr-1">
-              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Alignments</p>
-              <div className="space-y-2" role="list" aria-label="Alignment results">
-                {visibleResults.map((candidate, index) => (
-                  <div
-                    key={`${candidate.localDate}-${candidate.localTime}-${candidate.eventType}-${index}`}
-                    role="listitem"
-                  >
-                    <button
-                      type="button"
-                      aria-pressed={selectedIndex === index}
-                      data-testid="alignment-result-item"
-                      onClick={() => {
-                        setSelectedIndex(index);
-                        setMapFitId((id) => id + 1);
-                      }}
-                      className={`w-full rounded-2xl border p-3 text-left transition ${
-                        selectedIndex === index
-                          ? 'border-sky-500 bg-sky-500/10'
-                          : 'border-slate-700 bg-slate-900/80 hover:border-slate-500'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-white">
-                          {selectedIndex === index && <span aria-hidden="true">✓ </span>}
-                          {candidate.eventType === 'rise' ? '↑' : '↓'} {candidate.eventLabel}
-                        </span>
-                        <span className="tabular-nums text-sm text-slate-300">{candidate.score.toFixed(2)}°</span>
-                      </div>
-                      <div className="mt-1 text-sm tabular-nums text-slate-400">
-                        {candidate.localDate} · {candidate.localTime}
-                      </div>
-                      <div className="mt-2">
-                        {candidate.alignment.withinTolerance ? (
-                          <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-                            Match
-                          </span>
-                        ) : (
-                          <span className="inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
-                            Outside
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              {selectedCandidate && lastSearchedInputs ? (
-                <>
-                  <div
-                    data-testid="selected-result-header"
-                    className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-2.5 text-sm"
-                  >
-                    <p className="font-semibold text-white">
-                      Selected: {selectedCandidate.localDate} · {selectedCandidate.eventLabel}
-                    </p>
-                    <p className="text-slate-400">
-                      {selectedCandidate.eventLabel} azimuth:{' '}
-                      <span className="font-semibold text-amber-300">{selectedCandidate.object.azimuth.toFixed(2)}°</span>
-                    </p>
-                  </div>
-                  <AlignmentMap
-                    observer={lastSearchedInputs.observer}
-                    target={lastSearchedInputs.target}
-                    targetName={lastSearchedInputs.landmarkName}
-                    object={lastSearchedInputs.object}
-                    objectAzimuth={selectedCandidate.object.azimuth}
-                    targetBearing={selectedCandidate.target.bearing}
-                    targetDistanceKm={selectedCandidate.target.distanceKm}
-                    angularSeparation={selectedCandidate.alignment.angularSeparation}
-                    toleranceDegrees={lastSearchedInputs.toleranceDegrees}
-                    withinTolerance={selectedCandidate.alignment.withinTolerance}
-                    azimuthLabel={`${selectedCandidate.eventLabel} azimuth`}
-                    fitId={mapFitId}
-                  />
-                </>
-              ) : (
-                <div className="flex h-[420px] w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-950/70 px-6 text-center text-sm text-slate-500">
-                  Select an alignment from the list to view it on the map.
+              {error && (
+                <div className="min-w-64 flex-1 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200">
+                  {error}
                 </div>
               )}
             </div>
           </div>
-        )}
-      </section>
+        </section>
+
+        <section data-testid="alignment-results-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment results</h2>
+            {results !== null && (
+              <p className="text-sm font-semibold text-white">
+                {visibleResults?.length ?? 0} alignment{(visibleResults?.length ?? 0) === 1 ? '' : 's'}
+              </p>
+            )}
+          </div>
+
+          {status === 'running' && (
+            <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-200">
+              <div className="flex items-center justify-between">
+                <p>Searching for alignments…</p>
+                <button
+                  type="button"
+                  onClick={cancelSearch}
+                  className="rounded-xl bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                >
+                  Cancel Search
+                </button>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                <div className="h-full rounded-full bg-sky-500" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-slate-400">{Math.round(progress)}% complete</p>
+            </div>
+          )}
+
+          {results && !isCurrent && (
+            <div
+              role="status"
+              className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
+            >
+              {locationChanged
+                ? '⚠ Location changed — recalculate alignments. These results were calculated for the previous location.'
+                : '⚠ Inputs changed — search again to update these results. The map shows the last searched alignment.'}
+            </div>
+          )}
+
+          {results === null ? (
+            status !== 'running' ? (
+              <p className="mt-4 text-sm text-slate-500">Results will appear here after you search.</p>
+            ) : null
+          ) : visibleResults === null || visibleResults.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">No alignments found within the selected range and tolerance.</p>
+          ) : (
+            <div className="mt-3 max-h-[420px] overflow-y-auto rounded-2xl border border-slate-800 p-1.5">
+              {visibleResults.map((candidate, index) => (
+                <button
+                  key={`${candidate.localDate}-${candidate.localTime}-${candidate.eventType}-${index}`}
+                  type="button"
+                  data-testid="alignment-result-item"
+                  aria-pressed={selectedIndex === index}
+                  onClick={() => setSelectedIndex(index)}
+                  className={`grid w-full items-baseline gap-x-2 rounded-lg px-3 py-1.5 text-left text-sm transition ${
+                    candidate.moonPhase
+                      ? 'grid-cols-[1.25rem_5rem_minmax(0,1fr)_minmax(0,1fr)_3.25rem_minmax(0,1fr)]'
+                      : 'grid-cols-[1.25rem_5rem_minmax(0,1fr)_minmax(0,1fr)_3.25rem]'
+                  } ${selectedIndex === index ? 'bg-sky-500/10 text-white' : 'text-slate-300 hover:bg-slate-800/60'}`}
+                >
+                  <span aria-hidden="true" className="text-center">
+                    {candidate.eventType === 'rise' ? '↑' : '↓'}
+                  </span>
+                  <span className="font-semibold">{candidate.eventLabel}</span>
+                  <span className="whitespace-nowrap tabular-nums">{formatResultDate(candidate.localDate)}</span>
+                  <span className="whitespace-nowrap tabular-nums">{candidate.localTime}</span>
+                  <span className="whitespace-nowrap text-right tabular-nums text-slate-400">
+                    {candidate.score.toFixed(2)}°
+                    {candidate.alignment.withinTolerance && <span aria-hidden="true"> ✓</span>}
+                  </span>
+                  {candidate.moonPhase && (
+                    <span
+                      data-testid="moon-phase"
+                      data-phase-name={candidate.moonPhase.name}
+                      className="whitespace-nowrap text-right tabular-nums text-slate-400"
+                      title={candidate.moonPhase.name}
+                    >
+                      <span aria-hidden="true">{candidate.moonPhase.emoji}</span>
+                      <span className="hidden lg:inline"> {candidate.moonPhase.name}</span>
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,8 @@ import { convertLocalTimeToUtc } from '../timezone/convertLocalTimeToUtc';
 import { formatLocalDateTimeFromUtc } from '../timezone/formatLocalDateTime';
 import { isValidIsoDate } from '../utils/searchUtils';
 import { findRiseSetEvent } from '../astronomy/riseSet';
-import { collectFullMoonInstants, isWithinFullMoonWindow } from '../astronomy/lunarPhase';
+import { collectFullMoonInstants, getMoonPhase, isWithinFullMoonWindow } from '../astronomy/lunarPhase';
+import { isTimeWithinWindow, resolveTimeWindow } from './timeFilter';
 import { initialBearing } from '../geometry/bearing';
 import { angularDifference } from '../geometry/angularSeparation';
 import { greatCircleDistanceKm } from '../geometry/distance';
@@ -91,6 +92,19 @@ export async function findRiseSetAlignments(input: FindAlignmentsInput): Promise
       const azimuthError = angularDifference(targetAzimuth, event.azimuth);
       const metadata = formatResultMetadata(event.instant, input.timeZone);
 
+      if (input.object === 'Moon') {
+        const timeWindow = resolveTimeWindow({
+          option: input.timeFilter ?? 'any',
+          customStartTime: input.customStartTime,
+          customEndTime: input.customEndTime
+        });
+        if (timeWindow && !isTimeWithinWindow(metadata.localTime, timeWindow)) {
+          continue;
+        }
+      }
+
+      const moonPhase = input.object === 'Moon' ? getMoonPhase(event.instant) : undefined;
+
       candidates.push({
         eventType,
         eventLabel: getEventLabel(input.object, eventType),
@@ -99,7 +113,8 @@ export async function findRiseSetAlignments(input: FindAlignmentsInput): Promise
         timeZone: input.timeZone,
         timeZoneLabel: metadata.timeZoneLabel,
         score: azimuthError,
-        moonIlluminationPercent: undefined,
+        moonPhase,
+        moonIlluminationPercent: moonPhase?.illuminationPercent,
         moonDistanceKm: undefined,
         sunDistanceKm: undefined,
         object: {

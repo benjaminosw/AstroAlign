@@ -2,24 +2,35 @@
 
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { calculateAlignment, AlignmentResult } from '../lib/alignment/calculateAlignment';
+import { calculateAlignment } from '../lib/alignment/calculateAlignment';
+import { getBodyHorizontalPosition } from '../lib/astronomy/position';
+import { convertLocalTimeToUtc } from '../lib/timezone/convertLocalTimeToUtc';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
-import LocationEditor from './LocationEditor';
+import { formatResultDate } from '../lib/utils/formatResultDate';
+import LocationControls from './LocationControls';
 import TimePicker from './TimePicker';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
 
 const AUTO_CALC_DEBOUNCE_MS = 200;
 
-const AlignmentMap = dynamic(() => import('./AlignmentMap'), {
+const WorkspaceMap = dynamic(() => import('./WorkspaceMap'), {
   ssr: false,
   loading: () => (
-    <div data-testid="alignment-map-loading" className="h-[420px] w-full rounded-2xl border border-slate-800 bg-slate-900" />
+    <div
+      data-testid="workspace-map-loading"
+      className="h-[460px] w-full rounded-2xl border border-slate-800 bg-slate-900 lg:h-[620px]"
+    />
   )
 });
+
+const OBJECT_SYMBOL: Record<AstroObject, string> = {
+  Sun: '☀',
+  Moon: '🌙'
+};
 
 interface AlignmentCalculatorProps {
   observer: GeographicPoint;
@@ -35,7 +46,7 @@ interface AlignmentCalculatorProps {
 }
 
 interface ResultSnapshot {
-  result: AlignmentResult;
+  result: import('../lib/alignment/calculateAlignment').AlignmentResult;
   object: AstroObject;
   date: string;
   time: string;
@@ -51,13 +62,6 @@ type CalculatedInputs = {
   time: string | null;
   toleranceDegrees: number;
 };
-
-function formatDisplayDate(date: string): string {
-  const [year, month, day] = date.split('-');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthIndex = Number(month) - 1;
-  return `${Number(day)} ${months[monthIndex]} ${year}`;
-}
 
 export default function AlignmentCalculator({
   observer,
@@ -75,6 +79,7 @@ export default function AlignmentCalculator({
   const [date, setDate] = useState<string | null>(null);
   const [time, setTime] = useState<string | null>(null);
   const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
+  const [activeMarker, setActiveMarker] = useState<'observer' | 'target'>('observer');
   const [snapshot, setSnapshot] = useState<ResultSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastCalculatedInputs, setLastCalculatedInputs] = useState<CalculatedInputs | null>(null);
@@ -82,6 +87,7 @@ export default function AlignmentCalculator({
   const [autoUpdating, setAutoUpdating] = useState(false);
   const [autoError, setAutoError] = useState<string | null>(null);
   const [locationInputError, setLocationInputError] = useState(false);
+  const [sunAzimuth, setSunAzimuth] = useState<number | null>(null);
   const autoCalcTimerRef = useRef<number | null>(null);
   const autoCalcVersionRef = useRef(0);
 
@@ -100,6 +106,38 @@ export default function AlignmentCalculator({
       setTime(now.time);
     }
   }, [timeZone, date, time]);
+
+  useEffect(() => {
+    if (locationInputError || observerCoordinateError) {
+      setSunAzimuth(null);
+      return;
+    }
+    if (timeZoneStatus === 'loading' || !timeZone || !date || !time) {
+      setSunAzimuth(null);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      try {
+        const datetime = convertLocalTimeToUtc(date, time, timeZone);
+        const position = getBodyHorizontalPosition(object, datetime, observer);
+        setSunAzimuth(position.azimuth);
+      } catch {
+        setSunAzimuth(null);
+      }
+    }, AUTO_CALC_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    date,
+    time,
+    object,
+    observer,
+    timeZone,
+    timeZoneStatus,
+    locationInputError,
+    observerCoordinateError
+  ]);
 
   const currentInputs: CalculatedInputs = {
     observer,
@@ -141,7 +179,6 @@ export default function AlignmentCalculator({
         const result = calculateAlignment({ observer, target, object, date, time, timeZone, toleranceDegrees });
         setSnapshot({ result, object, date, time, toleranceDegrees, landmarkName: landmark?.name ?? null });
         setLastCalculatedInputs(currentInputs);
-        setMapFitId((id) => id + 1);
         setError(null);
         setAutoError(null);
       } catch (exception) {
@@ -197,7 +234,6 @@ export default function AlignmentCalculator({
       const result = calculateAlignment({ observer, target, object, date, time, timeZone, toleranceDegrees });
       setSnapshot({ result, object, date, time, toleranceDegrees, landmarkName: landmark?.name ?? null });
       setLastCalculatedInputs(currentInputs);
-      setMapFitId((id) => id + 1);
       setError(null);
       setAutoError(null);
     } catch (exception) {
@@ -205,24 +241,111 @@ export default function AlignmentCalculator({
     }
   }
 
+  function handleSelectLandmark(selected: SelectedLandmark) {
+    onSelectLandmark(selected);
+    setMapFitId((id) => id + 1);
+  }
+
+  function handleObserverMove(latitude: number, longitude: number) {
+    onObserverChange('latitude', String(latitude));
+    onObserverChange('longitude', String(longitude));
+  }
+
+  function handleTargetMove(latitude: number, longitude: number) {
+    onTargetChange('latitude', String(latitude));
+    onTargetChange('longitude', String(longitude));
+  }
+
+  const alignment = snapshot
+    ? {
+        object: snapshot.object,
+        objectAzimuth: snapshot.result.object.azimuth,
+        targetBearing: snapshot.result.target.bearing,
+        targetDistanceKm: snapshot.result.target.distanceKm,
+        angularSeparation: snapshot.result.alignment.angularSeparation,
+        toleranceDegrees: snapshot.toleranceDegrees,
+        withinTolerance: snapshot.result.alignment.withinTolerance,
+        azimuthLabel: `${snapshot.object} azimuth`
+      }
+    : null;
+
   return (
-    <div
-      data-testid="calculator-workspace"
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
-    >
-      <div className="lg:sticky lg:top-8">
-        <LocationEditor
-          observer={observer}
-          target={target}
-          landmark={landmark}
-          timeZone={timeZone}
-          timeZoneStatus={timeZoneStatus}
-          onObserverChange={onObserverChange}
-          onTargetChange={onTargetChange}
-          onSelectLandmark={onSelectLandmark}
-          onClearLandmark={onClearLandmark}
-          onInputErrorChange={setLocationInputError}
-          actions={
+    <div data-testid="calculator-workspace" className="space-y-6">
+      <LocationControls
+        observer={observer}
+        target={target}
+        landmark={landmark}
+        timeZone={timeZone}
+        timeZoneStatus={timeZoneStatus}
+        onObserverChange={onObserverChange}
+        onTargetChange={onTargetChange}
+        onSelectLandmark={handleSelectLandmark}
+        onClearLandmark={onClearLandmark}
+        onInputErrorChange={setLocationInputError}
+      />
+
+      <WorkspaceMap
+        observer={observer}
+        target={target}
+        targetName={landmark?.name ?? null}
+        activeLocation={activeMarker}
+        onObserverMove={handleObserverMove}
+        onTargetMove={handleTargetMove}
+        onActivate={setActiveMarker}
+        fitId={mapFitId}
+        fitTarget="target"
+        alignment={alignment}
+        sun={sunAzimuth !== null ? { object, azimuth: sunAzimuth } : null}
+        className="h-[460px] lg:h-[620px]"
+      />
+
+      <div data-testid="alignment-columns" className="grid items-start gap-6 lg:grid-cols-2">
+        <section data-testid="alignment-settings-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment settings</h2>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <div>
+              <label htmlFor="calculate-object" className="text-sm text-slate-300">
+                Astronomical object
+              </label>
+              <select
+                id="calculate-object"
+                value={object}
+                onChange={(event) => setObject(event.target.value as AstroObject)}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              >
+                <option value={ASTRO_OBJECT.Sun}>Sun</option>
+                <option value={ASTRO_OBJECT.Moon}>Moon</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="calculate-date" className="text-sm text-slate-300">
+                Date
+              </label>
+              <input
+                id="calculate-date"
+                type="date"
+                value={date ?? ''}
+                onChange={(event) => setDate(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              />
+            </div>
+
+            <div>
+              <span className="text-sm text-slate-300">Time</span>
+              <TimePicker label="Time" value={time ?? ''} onChange={setTime} />
+            </div>
+
+            <div>
+              <label htmlFor="calculate-tolerance" className="text-sm text-slate-300">
+                Alignment tolerance
+              </label>
+              <TolerancePicker id="calculate-tolerance" value={toleranceDegrees} onChange={setToleranceDegrees} />
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-start gap-4">
             <StateButton
               state={isCurrent ? 'current' : 'needsAction'}
               onClick={submit}
@@ -230,58 +353,32 @@ export default function AlignmentCalculator({
               currentLabel="✓ Calculated"
               testId="calculate-button"
             />
-          }
-        />
-      </div>
 
-      <div className="space-y-6">
-        <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment</h2>
-
-          <div>
-            <label htmlFor="calculate-object" className="text-sm text-slate-300">
-              Astronomical object
-            </label>
-            <select
-              id="calculate-object"
-              value={object}
-              onChange={(event) => setObject(event.target.value as AstroObject)}
-              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-            >
-              <option value={ASTRO_OBJECT.Sun}>Sun</option>
-              <option value={ASTRO_OBJECT.Moon}>Moon</option>
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="calculate-date" className="text-sm text-slate-300">
-              Date
-            </label>
-            <input
-              id="calculate-date"
-              type="date"
-              value={date ?? ''}
-              onChange={(event) => setDate(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-            />
-          </div>
-
-          <div>
-            <span className="text-sm text-slate-300">Time</span>
-            <TimePicker label="Time" value={time ?? ''} onChange={setTime} />
-          </div>
-
-          <div>
-            <label htmlFor="calculate-tolerance" className="text-sm text-slate-300">
-              Alignment tolerance
-            </label>
-            <TolerancePicker id="calculate-tolerance" value={toleranceDegrees} onChange={setToleranceDegrees} />
+            {error && (
+              <div className="min-w-64 flex-1 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200">
+                {error}
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Alignment result</p>
+        <section data-testid="alignment-result-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment result</h2>
+            {snapshot && (
+              <span
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  snapshot.result.alignment.withinTolerance
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'bg-amber-500/15 text-amber-300'
+                }`}
+              >
+                {snapshot.result.alignment.withinTolerance
+                  ? `✓ Within ${snapshot.toleranceDegrees}°`
+                  : `⚠ Outside ${snapshot.toleranceDegrees}°`}{' '}
+                tolerance
+              </span>
+            )}
           </div>
 
           {snapshot && !isCurrent && (
@@ -312,103 +409,82 @@ export default function AlignmentCalculator({
             </div>
           )}
 
-          {error && (
-            <div className="mt-3 rounded-2xl border border-rose-600 bg-rose-950/60 p-4 text-sm text-rose-200">{error}</div>
-          )}
-
-        {snapshot ? (
-          <div>
-            {lastCalculatedInputs && (
-              <div className="mt-4">
-                <AlignmentMap
-                  observer={lastCalculatedInputs.observer}
-                  target={lastCalculatedInputs.target}
-                  targetName={snapshot.landmarkName}
-                  object={snapshot.object}
-                  objectAzimuth={snapshot.result.object.azimuth}
-                  targetBearing={snapshot.result.target.bearing}
-                  targetDistanceKm={snapshot.result.target.distanceKm}
-                  angularSeparation={snapshot.result.alignment.angularSeparation}
-                  toleranceDegrees={snapshot.toleranceDegrees}
-                  withinTolerance={snapshot.result.alignment.withinTolerance}
-                  azimuthLabel={`${snapshot.object} azimuth`}
-                  fitId={mapFitId}
-                />
-              </div>
-            )}
-
-            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3">
-              <p className="text-lg font-semibold text-white">
-                {snapshot.object} · {formatDisplayDate(snapshot.date)} · {snapshot.time}
-              </p>
-              <p className="mt-1 text-xs text-slate-400">Tolerance {snapshot.toleranceDegrees}°</p>
-            </div>
-
-            <div
-              className={`mt-3 rounded-2xl border px-4 py-3 text-sm font-semibold ${
-                snapshot.result.alignment.withinTolerance
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-              }`}
-            >
-              {snapshot.result.alignment.withinTolerance
-                ? `✓ Within ${snapshot.toleranceDegrees}° tolerance`
-                : `⚠ Outside ${snapshot.toleranceDegrees}° tolerance`}
-            </div>
-
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <div className="space-y-3 rounded-2xl bg-slate-900/80 p-4">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{snapshot.object.toUpperCase()}</p>
-                <div>
-                  <p className="text-sm text-slate-400">Azimuth</p>
-                  <p className="text-2xl font-semibold text-white">{snapshot.result.object.azimuth.toFixed(2)}°</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400">Altitude</p>
-                  <p className="text-2xl font-semibold text-white">{snapshot.result.object.altitude.toFixed(2)}°</p>
-                </div>
+          {snapshot ? (
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <p className="text-lg font-semibold text-white">
+                  {OBJECT_SYMBOL[snapshot.object]} {snapshot.object} · {formatResultDate(snapshot.date)} ·{' '}
+                  {snapshot.time}
+                </p>
               </div>
 
-              <div className="space-y-3 rounded-2xl bg-slate-900/80 p-4">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Target</p>
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-sm text-slate-400">Distance</p>
-                  <p className="text-2xl font-semibold text-white">{snapshot.result.target.distanceKm.toFixed(2)} km</p>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Target bearing</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">
+                    {snapshot.result.target.bearing.toFixed(2)}°
+                  </p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-400">Bearing</p>
-                  <p className="text-2xl font-semibold text-white">{snapshot.result.target.bearing.toFixed(2)}°</p>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{snapshot.object} azimuth</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">{snapshot.result.object.azimuth.toFixed(2)}°</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-400">Altitude</p>
-                  <p className="text-2xl font-semibold text-white">{snapshot.result.target.altitude.toFixed(2)}°</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 rounded-2xl bg-slate-900/80 p-4 sm:col-span-2 xl:col-span-1">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Alignment</p>
-                <div>
-                  <p className="text-sm text-slate-400">Angular separation</p>
-                  <p className="text-2xl font-semibold text-white">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Difference</p>
+                  <p className="mt-1 text-2xl font-semibold text-white">
                     {snapshot.result.alignment.angularSeparation.toFixed(2)}°
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-slate-400">Azimuth difference</p>
-                  <p className="text-2xl font-semibold text-white">{snapshot.result.alignment.azimuthDelta.toFixed(2)}°</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400">Altitude difference</p>
-                  <p className="text-2xl font-semibold text-white">
-                    {snapshot.result.alignment.altitudeDelta.toFixed(2)}°
-                  </p>
-                </div>
               </div>
+
+              <details data-testid="alignment-details" className="rounded-2xl border border-slate-800 bg-slate-900/50">
+                <summary className="flex cursor-pointer items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white">
+                  <span>Details</span>
+                  <span aria-hidden="true">▾</span>
+                </summary>
+                <div className="grid gap-x-6 gap-y-3 border-t border-slate-800 px-4 py-4 text-sm sm:grid-cols-2">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Tolerance</span>
+                    <span className="tabular-nums text-slate-200">{snapshot.toleranceDegrees}°</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Angular separation</span>
+                    <span className="tabular-nums text-slate-200">
+                      {snapshot.result.alignment.angularSeparation.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Azimuth difference</span>
+                    <span className="tabular-nums text-slate-200">
+                      {snapshot.result.alignment.azimuthDelta.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Altitude difference</span>
+                    <span className="tabular-nums text-slate-200">
+                      {snapshot.result.alignment.altitudeDelta.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">{snapshot.object} altitude</span>
+                    <span className="tabular-nums text-slate-200">{snapshot.result.object.altitude.toFixed(2)}°</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Target altitude</span>
+                    <span className="tabular-nums text-slate-200">{snapshot.result.target.altitude.toFixed(2)}°</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Target distance</span>
+                    <span className="tabular-nums text-slate-200">
+                      {snapshot.result.target.distanceKm.toFixed(2)} km
+                    </span>
+                  </div>
+                </div>
+              </details>
             </div>
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-slate-500">Results will appear here after you calculate.</p>
-        )}
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">Results will appear here after you calculate.</p>
+          )}
         </section>
       </div>
     </div>

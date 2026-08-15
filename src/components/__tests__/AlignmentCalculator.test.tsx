@@ -15,65 +15,54 @@ vi.mock('../../lib/alignment/calculateAlignment', async (importOriginal) => {
   return { ...actual, calculateAlignment: vi.fn(actual.calculateAlignment) };
 });
 
-vi.mock('../LocationMap', () => ({
+vi.mock('../WorkspaceMap', () => ({
   __esModule: true,
   default: (props: {
+    className?: string;
     observer: { latitude: number; longitude: number };
     target: { latitude: number; longitude: number };
-    observerName?: string | null;
     targetName?: string | null;
     activeLocation: string;
     onObserverMove: (_latitude: number, _longitude: number) => void;
     onTargetMove: (_latitude: number, _longitude: number) => void;
     onActivate: (_location: string) => void;
     fitId?: number;
+    fitTarget?: 'both' | 'target';
+    alignment?: {
+      object: string;
+      objectAzimuth: number;
+      targetBearing: number;
+      angularSeparation: number;
+      toleranceDegrees: number;
+      withinTolerance: boolean;
+      azimuthLabel?: string;
+    } | null;
+    sun?: { object: string; azimuth: number } | null;
   }) => (
     <div
-      data-testid="mock-location-map"
+      data-testid="mock-workspace-map"
+      className={props.className}
       data-observer-lat={props.observer.latitude}
       data-observer-lon={props.observer.longitude}
       data-target-lat={props.target.latitude}
       data-target-lon={props.target.longitude}
       data-active-location={props.activeLocation}
       data-fit-id={props.fitId ?? 0}
+      data-fit-target={props.fitTarget ?? 'both'}
+      data-target-name={props.targetName ?? ''}
+      data-object={props.alignment?.object ?? ''}
+      data-azimuth-label={props.alignment?.azimuthLabel ?? ''}
+      data-object-azimuth={props.alignment?.objectAzimuth ?? 0}
+      data-target-bearing={props.alignment?.targetBearing ?? 0}
+      data-angular-separation={props.alignment?.angularSeparation ?? 0}
+      data-tolerance={props.alignment?.toleranceDegrees ?? 0}
+      data-within-tolerance={props.alignment?.withinTolerance ?? false}
+      data-sun-object={props.sun?.object ?? ''}
+      data-sun-azimuth={props.sun?.azimuth ?? 0}
     >
       <button onClick={() => props.onObserverMove(1.5, 104.2)}>simulate-observer-move</button>
       <button onClick={() => props.onTargetMove(2.1, 101.9)}>simulate-target-move</button>
     </div>
-  )
-}));
-
-vi.mock('../AlignmentMap', () => ({
-  __esModule: true,
-  default: (props: {
-    observer: { latitude: number; longitude: number };
-    target: { latitude: number; longitude: number };
-    object: string;
-    objectAzimuth: number;
-    targetBearing: number;
-    angularSeparation: number;
-    toleranceDegrees: number;
-    withinTolerance: boolean;
-    targetName?: string | null;
-    azimuthLabel?: string;
-    fitId?: number;
-  }) => (
-    <div
-      data-testid="mock-alignment-map"
-      data-object-azimuth={props.objectAzimuth}
-      data-target-bearing={props.targetBearing}
-      data-object={props.object}
-      data-angular-separation={props.angularSeparation}
-      data-tolerance={props.toleranceDegrees}
-      data-within-tolerance={props.withinTolerance}
-      data-observer-lat={props.observer.latitude}
-      data-observer-lon={props.observer.longitude}
-      data-target-lat={props.target.latitude}
-      data-target-lon={props.target.longitude}
-      data-target-name={props.targetName ?? ''}
-      data-azimuth-label={props.azimuthLabel ?? ''}
-      data-fit-id={props.fitId ?? 0}
-    />
   )
 }));
 
@@ -114,15 +103,21 @@ function calculatedButton() {
 }
 
 function mapElement() {
-  return screen.getByTestId('mock-alignment-map');
+  return screen.getByTestId('mock-workspace-map');
 }
 
 function mapProp(name: string) {
   return mapElement().getAttribute(name);
 }
 
+function editObserverLatitude(value: string) {
+  fireEvent.click(screen.getByRole('button', { name: /edit observer location/i }));
+  fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value } });
+  fireEvent.keyDown(screen.getAllByLabelText('Latitude')[0], { key: 'Enter' });
+}
+
 async function waitForMap() {
-  return screen.findByTestId('mock-alignment-map', {}, { timeout: 3000 });
+  return screen.findByTestId('mock-workspace-map', {}, { timeout: 3000 });
 }
 
 describe('AlignmentCalculator workspace', () => {
@@ -134,24 +129,48 @@ describe('AlignmentCalculator workspace', () => {
     expect(calculatedButton()).toBeNull();
     expect(screen.getByText('Results will appear here after you calculate.')).toBeTruthy();
 
-    expect(screen.getAllByLabelText('Latitude')).toHaveLength(2);
+    expect(screen.queryByLabelText('Latitude')).toBeNull();
+    expect(screen.getAllByText('Latitude')).toHaveLength(2);
     expect(screen.getByLabelText('Date')).toBeTruthy();
+    expect(screen.queryByTestId('editing-observer')).toBeNull();
+    expect(screen.queryByText(/Editing:/)).toBeNull();
   });
 
-  it('shows results beside the inputs, flips the button, and keeps inputs editable after a calculation', async () => {
+  it('shows a compact result after calculation, flips the button, and keeps inputs editable', async () => {
     render(<Harness />);
 
     fireEvent.click(calculateButton());
 
     expect(calculatedButton()?.className).toContain('bg-slate-700');
     expect(screen.getByText('Alignment result')).toBeTruthy();
-    expect(screen.getByText(/(within|outside) .*° tolerance/i)).toBeTruthy();
+    expect(screen.getByText(/☀ Sun · \d{2}\/\d{2}\/\d{4} · \d{2}:\d{2}/)).toBeTruthy();
+    expect(screen.getByText(/(within|outside) [\d.]+°/i)).toBeTruthy();
     expect(screen.queryByText('Results will appear here after you calculate.')).toBeNull();
     await waitForMap();
 
     const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '2026-08-20' } });
     expect(dateInput.value).toBe('2026-08-20');
+  });
+
+  it('shows detailed diagnostics behind a collapsed Details section', async () => {
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+
+    const details = screen.getByTestId('alignment-details');
+    expect(details.hasAttribute('open')).toBe(false);
+
+    expect(screen.getByText('Tolerance')).toBeTruthy();
+    expect(screen.getByText('Angular separation')).toBeTruthy();
+    expect(screen.getByText('Azimuth difference')).toBeTruthy();
+    expect(screen.getByText('Altitude difference')).toBeTruthy();
+    expect(screen.getByText('Sun altitude')).toBeTruthy();
+    expect(screen.getByText('Target altitude')).toBeTruthy();
+    expect(screen.getByText('Target distance')).toBeTruthy();
+
+    fireEvent.click(within(details).getByText('Details'));
+    expect(details.hasAttribute('open')).toBe(true);
   });
 
   it('marks inputs as changed and shows a stale indicator while keeping the previous result visible', async () => {
@@ -167,7 +186,7 @@ describe('AlignmentCalculator workspace', () => {
     expect(calculateButton()).toBeTruthy();
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
     expect(screen.getByText('Alignment result')).toBeTruthy();
-    expect(screen.queryByText(/1 Jan 2030/)).toBeNull();
+    expect(screen.queryByText(/01\/01\/2030/)).toBeNull();
   });
 
   it('marks inputs as changed for object, time, tolerance, and coordinate edits', async () => {
@@ -192,9 +211,7 @@ describe('AlignmentCalculator workspace', () => {
     await recalcThenChange(() =>
       fireEvent.change(screen.getByLabelText('Alignment tolerance'), { target: { value: '1' } })
     );
-    await recalcThenChange(() =>
-      fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } })
-    );
+    await recalcThenChange(() => editObserverLatitude('1.5'));
   });
 
   it('updates the result on recalculate and clears the stale indicator', async () => {
@@ -211,35 +228,67 @@ describe('AlignmentCalculator workspace', () => {
 
     expect(screen.queryByText(/inputs changed/i)).toBeNull();
     expect(calculatedButton()).toBeTruthy();
-    expect(screen.getByText(/1 Jan 2030/)).toBeTruthy();
+    expect(screen.getByText(/01\/01\/2030/)).toBeTruthy();
   });
 
   it('shows an error and does not mark inputs as calculated when calculation fails', () => {
     render(<Harness />);
 
+    fireEvent.click(screen.getByRole('button', { name: /edit observer location/i }));
     fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '200' } });
+    expect(screen.getAllByText(/latitude must be between/i).length).toBeGreaterThan(0);
+
     fireEvent.click(calculateButton());
 
-    expect(screen.getAllByText(/latitude must be between/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/enter valid coordinates to calculate/i)).toBeTruthy();
     expect(calculatedButton()).toBeNull();
     expect(calculateButton()).toBeTruthy();
     expect(screen.getByText('Results will appear here after you calculate.')).toBeTruthy();
   });
 
-  it('uses a two-column desktop layout with the location editor on the left and results on the right', () => {
+  it('stacks location, full-width map, then settings and result side by side below the map', async () => {
     render(<Harness />);
+    await waitForMap();
 
     const workspace = screen.getByTestId('calculator-workspace');
-    expect(workspace.className).toContain('lg:grid-cols-[');
+    expect(workspace.className).toContain('space-y-6');
 
-    const columns = Array.from(workspace.children) as HTMLElement[];
-    expect(columns).toHaveLength(2);
-    expect(within(columns[0]).getByText('Location')).toBeTruthy();
-    expect(within(columns[0]).getByText('Observer')).toBeTruthy();
-    expect(within(columns[0]).getByText('Target')).toBeTruthy();
-    expect(columns[0].className).toContain('lg:sticky');
-    expect(within(columns[1]).getByText('Alignment')).toBeTruthy();
+    const sections = Array.from(workspace.children) as HTMLElement[];
+    expect(sections.map((el) => el.getAttribute('data-testid'))).toEqual([
+      'location-controls',
+      'mock-workspace-map',
+      'alignment-columns'
+    ]);
+
+    expect(sections[1].className).toContain('lg:h-[620px]');
+    expect(within(sections[0]).getByText(/Asia\/Singapore/)).toBeTruthy();
+
+    const columns = Array.from(sections[2].children) as HTMLElement[];
+    expect(columns.map((el) => el.getAttribute('data-testid'))).toEqual([
+      'alignment-settings-card',
+      'alignment-result-card'
+    ]);
+    expect(sections[2].className).toContain('lg:grid-cols-2');
+    expect(within(columns[0]).getByText('Alignment settings')).toBeTruthy();
     expect(within(columns[1]).getByText('Alignment result')).toBeTruthy();
+  });
+
+  it('passes the live sun azimuth to the map and updates it when the date changes', async () => {
+    render(<Harness />);
+    const map = await waitForMap();
+
+    await waitFor(() => {
+      expect(Number(map.getAttribute('data-sun-azimuth'))).toBeGreaterThan(0);
+    });
+    expect(map.getAttribute('data-sun-object')).toBe('Sun');
+    const azimuthBefore = map.getAttribute('data-sun-azimuth');
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
+
+    await waitFor(() => {
+      expect(map.getAttribute('data-sun-azimuth')).not.toBe(azimuthBefore);
+    });
+    expect(map.getAttribute('data-fit-id')).toBe('0');
   });
 
   it('marks the calculation as stale when a landmark is selected', async () => {
@@ -279,26 +328,41 @@ describe('AlignmentCalculator workspace', () => {
     expect(map.getAttribute('data-observer-lon')).toBe(String(DEFAULT_OBSERVER.longitude));
     expect(map.getAttribute('data-target-lat')).toBe(String(DEFAULT_TARGET.latitude));
     expect(map.getAttribute('data-target-lon')).toBe(String(DEFAULT_TARGET.longitude));
-    expect(Number(map.getAttribute('data-fit-id'))).toBeGreaterThanOrEqual(1);
+    expect(map.getAttribute('data-fit-id')).toBe('0');
+    expect(map.getAttribute('data-fit-target')).toBe('target');
   });
 
-  it('does not update the map azimuth when inputs change before recalculation', async () => {
+  it('does not move the viewport when a marker is dragged after a calculation', async () => {
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await waitForMap();
+    const fitBefore = mapProp('data-fit-id');
+
+    fireEvent.click(screen.getByText('simulate-observer-move'));
+
+    expect(mapProp('data-observer-lat')).toBe('1.5');
+    expect(mapProp('data-observer-lon')).toBe('104.2');
+    expect(mapProp('data-fit-id')).toBe(fitBefore);
+  });
+
+  it('updates the map markers to live coordinates while keeping the calculated overlay until recalculation', async () => {
     render(<Harness />);
 
     fireEvent.click(calculateButton());
     await waitForMap();
     const azimuthBefore = mapProp('data-object-azimuth');
-    const observerBefore = mapProp('data-observer-lat');
 
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
-    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    editObserverLatitude('1.5');
 
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
     expect(mapProp('data-object-azimuth')).toBe(azimuthBefore);
-    expect(mapProp('data-observer-lat')).toBe(observerBefore);
+    expect(mapProp('data-observer-lat')).toBe('1.5');
+    expect(mapProp('data-fit-id')).toBe('0');
   });
 
-  it('updates both the numerical result and the map on recalculation', async () => {
+  it('updates both the numerical result and the map on recalculation without moving the viewport', async () => {
     render(<Harness />);
 
     fireEvent.click(calculateButton());
@@ -310,11 +374,11 @@ describe('AlignmentCalculator workspace', () => {
     fireEvent.click(calculateButton());
 
     expect(screen.queryByText(/inputs changed/i)).toBeNull();
-    expect(screen.getByText(/1 Jan 2030/)).toBeTruthy();
+    expect(screen.getByText(/01\/01\/2030/)).toBeTruthy();
     await waitFor(() => {
       expect(mapProp('data-object-azimuth')).not.toBe(azimuthBefore);
     });
-    expect(Number(mapProp('data-fit-id'))).toBeGreaterThan(Number(fitBefore));
+    expect(mapProp('data-fit-id')).toBe(fitBefore);
   });
 
   it('shows the selected landmark name on the map when calculated from a landmark selection', async () => {
@@ -337,6 +401,7 @@ describe('AlignmentCalculator workspace', () => {
 
     expect(mapProp('data-target-name')).toBe('Marina Bay Sands');
     expect(mapProp('data-target-lat')).toBe('1.2834');
+    expect(mapProp('data-fit-id')).toBe('1');
     vi.useRealTimers();
   });
 
@@ -351,10 +416,9 @@ describe('AlignmentCalculator workspace', () => {
     expect(calculatedButton()).toBeTruthy();
     const fitBefore = Number(mapProp('data-fit-id'));
 
-    const observerLatitude = screen.getAllByLabelText('Latitude')[0];
-    fireEvent.change(observerLatitude, { target: { value: '1.5' } });
-    fireEvent.change(observerLatitude, { target: { value: '1.9' } });
-    fireEvent.change(observerLatitude, { target: { value: '2.0' } });
+    editObserverLatitude('1.5');
+    editObserverLatitude('1.9');
+    editObserverLatitude('2.0');
     expect(calculatedButton()).toBeNull();
 
     await act(async () => {
@@ -362,7 +426,7 @@ describe('AlignmentCalculator workspace', () => {
     });
 
     expect(calculatedButton()).toBeTruthy();
-    expect(mapProp('data-fit-id')).toBe(String(fitBefore + 1));
+    expect(mapProp('data-fit-id')).toBe(String(fitBefore));
     expect(mapProp('data-observer-lat')).toBe('2');
     vi.useRealTimers();
   });
@@ -377,9 +441,8 @@ describe('AlignmentCalculator workspace', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    const observerLatitude = screen.getAllByLabelText('Latitude')[0];
-    fireEvent.change(observerLatitude, { target: { value: '1.5' } });
-    fireEvent.change(observerLatitude, { target: { value: '1.7' } });
+    editObserverLatitude('1.5');
+    editObserverLatitude('1.7');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -396,7 +459,7 @@ describe('AlignmentCalculator workspace', () => {
     render(<Harness />);
 
     const callsBefore = vi.mocked(calculateAlignment).mock.calls.length;
-    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    editObserverLatitude('1.5');
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -419,7 +482,7 @@ describe('AlignmentCalculator workspace', () => {
     const callsBefore = vi.mocked(calculateAlignment).mock.calls.length;
     const fitBefore = Number(mapProp('data-fit-id'));
 
-    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    editObserverLatitude('1.5');
     fireEvent.click(calculateButton());
 
     expect(calculatedButton()).toBeTruthy();
@@ -428,7 +491,7 @@ describe('AlignmentCalculator workspace', () => {
     });
 
     expect(vi.mocked(calculateAlignment).mock.calls.length).toBe(callsBefore + 1);
-    expect(mapProp('data-fit-id')).toBe(String(fitBefore + 1));
+    expect(mapProp('data-fit-id')).toBe(String(fitBefore));
     vi.useRealTimers();
   });
 
@@ -446,7 +509,7 @@ describe('AlignmentCalculator workspace', () => {
       throw new Error('boom');
     });
 
-    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    editObserverLatitude('1.5');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
     });
@@ -468,7 +531,7 @@ describe('AlignmentCalculator workspace', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+    editObserverLatitude('1.5');
 
     expect(screen.getByTestId('auto-updating')).toBeTruthy();
 

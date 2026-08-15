@@ -36,3 +36,43 @@ export function isWithinFullMoonWindow(eventDate: Date, fullMoonInstants: Date[]
     return differenceMs <= 24 * 60 * 60 * 1000;
   });
 }
+
+export interface MoonPhaseBucket {
+  name: string;
+  emoji: string;
+}
+
+export interface MoonPhaseInfo extends MoonPhaseBucket {
+  phaseAngle: number;
+  illuminationPercent: number;
+}
+
+const MOON_PHASE_BUCKETS: MoonPhaseBucket[] = [
+  { name: 'New Moon', emoji: '🌑' },
+  { name: 'Waxing Crescent', emoji: '🌒' },
+  { name: 'First Quarter', emoji: '🌓' },
+  { name: 'Waxing Gibbous', emoji: '🌔' },
+  { name: 'Full Moon', emoji: '🌕' },
+  { name: 'Waning Gibbous', emoji: '🌖' },
+  { name: 'Last Quarter', emoji: '🌗' },
+  { name: 'Waning Crescent', emoji: '🌘' }
+];
+
+export function moonPhaseBucket(phaseAngle: number): MoonPhaseBucket {
+  const normalized = ((phaseAngle % 360) + 360) % 360;
+  const bucketSize = 360 / MOON_PHASE_BUCKETS.length;
+  const index = Math.floor((normalized + bucketSize / 2) / bucketSize) % MOON_PHASE_BUCKETS.length;
+  return MOON_PHASE_BUCKETS[index];
+}
+
+export function getMoonPhase(instant: Date): MoonPhaseInfo {
+  const phaseAngle = Astronomy.MoonPhase(instant);
+  const illumination = Astronomy.Illumination(Astronomy.Body.Moon, instant);
+  const bucket = moonPhaseBucket(phaseAngle);
+  return {
+    name: bucket.name,
+    emoji: bucket.emoji,
+    phaseAngle,
+    illuminationPercent: illumination.phase_fraction * 100
+  };
+}
