@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { GeographicPoint } from '../types/astronomy';
+import type { SelectedLandmark } from '../lib/geocoding/types';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../lib/constants/defaultCoordinates';
 import { getTimezoneFromCoordinates } from '../lib/timezone/getTimezoneFromCoordinates';
 import { validateCoordinates as validateCoordinateValues } from '../lib/timezone/validateCoordinates';
@@ -33,6 +34,7 @@ export default function AlignmentApp() {
   const [activeTab, setActiveTab] = useState<TabId>('calculate');
   const [observer, setObserver] = useState<GeographicPoint>(DEFAULT_OBSERVER);
   const [target, setTarget] = useState<GeographicPoint>(DEFAULT_TARGET);
+  const [targetLandmark, setTargetLandmark] = useState<SelectedLandmark | null>(null);
   const [timeZone, setTimeZone] = useState<string | null>(null);
   const [timeZoneStatus, setTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [targetTimeZone, setTargetTimeZone] = useState<string | null>(null);
@@ -97,16 +99,28 @@ export default function AlignmentApp() {
     setTarget((prev) => ({ ...prev, [field]: Number(value) }));
   }
 
+  function handleSelectLandmark(landmark: SelectedLandmark) {
+    setTarget((prev) => ({ ...prev, latitude: landmark.latitude, longitude: landmark.longitude }));
+    setTargetLandmark(landmark);
+  }
+
+  function handleClearLandmark() {
+    setTargetLandmark(null);
+  }
+
   const activeTabInfo = TABS.find((tab) => tab.id === activeTab) ?? TABS[0];
 
   const commonProps = {
     observer,
     target,
+    landmark: targetLandmark,
     timeZone,
     timeZoneStatus,
     observerCoordinateError,
     onObserverChange: handleObserverChange,
-    onTargetChange: handleTargetChange
+    onTargetChange: handleTargetChange,
+    onSelectLandmark: handleSelectLandmark,
+    onClearLandmark: handleClearLandmark
   };
 
   return (
@@ -136,10 +150,13 @@ export default function AlignmentApp() {
       {activeTab === 'shooting' && (
         <FindShootingLocations
           target={target}
+          landmark={targetLandmark}
           targetCoordinateError={targetCoordinateError}
           timeZone={targetTimeZone}
           timeZoneStatus={targetTimeZoneStatus}
           onTargetChange={handleTargetChange}
+          onSelectLandmark={handleSelectLandmark}
+          onClearLandmark={handleClearLandmark}
         />
       )}
     </div>

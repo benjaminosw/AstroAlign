@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { calculateAlignment, AlignmentResult } from '../lib/alignment/calculateAlignment';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
+import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
 import LocationInputs from './LocationInputs';
@@ -13,11 +14,14 @@ import StateButton from './StateButton';
 interface AlignmentCalculatorProps {
   observer: GeographicPoint;
   target: Target;
+  landmark?: SelectedLandmark | null;
   timeZone: string | null;
   timeZoneStatus: 'idle' | 'loading' | 'error';
   observerCoordinateError: string | null;
   onObserverChange: (_field: keyof GeographicPoint, _value: string) => void;
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
+  onSelectLandmark?: (_landmark: SelectedLandmark) => void;
+  onClearLandmark?: () => void;
 }
 
 interface ResultSnapshot {
@@ -47,11 +51,14 @@ function formatDisplayDate(date: string): string {
 export default function AlignmentCalculator({
   observer,
   target,
+  landmark = null,
   timeZone,
   timeZoneStatus,
   observerCoordinateError,
   onObserverChange,
-  onTargetChange
+  onTargetChange,
+  onSelectLandmark = () => {},
+  onClearLandmark = () => {}
 }: AlignmentCalculatorProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
   const [date, setDate] = useState<string | null>(null);
@@ -128,11 +135,14 @@ export default function AlignmentCalculator({
         <LocationInputs
           observer={observer}
           target={target}
+          landmark={landmark}
           timeZone={timeZone}
           timeZoneStatus={timeZoneStatus}
           observerCoordinateError={observerCoordinateError}
           onObserverChange={onObserverChange}
           onTargetChange={onTargetChange}
+          onSelectLandmark={onSelectLandmark}
+          onClearLandmark={onClearLandmark}
         />
       </div>
 

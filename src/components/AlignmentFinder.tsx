@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { findAlignments } from '../lib/alignment/findAlignments';
 import type { AlignmentCandidate } from '../lib/alignment/types';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
+import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
 import LocationInputs from './LocationInputs';
@@ -13,11 +14,14 @@ import StateButton from './StateButton';
 interface AlignmentFinderProps {
   observer: GeographicPoint;
   target: Target;
+  landmark?: SelectedLandmark | null;
   timeZone: string | null;
   timeZoneStatus: 'idle' | 'loading' | 'error';
   observerCoordinateError: string | null;
   onObserverChange: (_field: keyof GeographicPoint, _value: string) => void;
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
+  onSelectLandmark?: (_landmark: SelectedLandmark) => void;
+  onClearLandmark?: () => void;
 }
 
 type SearchedInputs = {
@@ -33,11 +37,14 @@ type SearchedInputs = {
 export default function AlignmentFinder({
   observer,
   target,
+  landmark = null,
   timeZone,
   timeZoneStatus,
   observerCoordinateError,
   onObserverChange,
-  onTargetChange
+  onTargetChange,
+  onSelectLandmark = () => {},
+  onClearLandmark = () => {}
 }: AlignmentFinderProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
   const [startDate, setStartDate] = useState<string | null>(null);
@@ -169,11 +176,14 @@ export default function AlignmentFinder({
         <LocationInputs
           observer={observer}
           target={target}
+          landmark={landmark}
           timeZone={timeZone}
           timeZoneStatus={timeZoneStatus}
           observerCoordinateError={observerCoordinateError}
           onObserverChange={onObserverChange}
           onTargetChange={onTargetChange}
+          onSelectLandmark={onSelectLandmark}
+          onClearLandmark={onClearLandmark}
         />
       </div>
 

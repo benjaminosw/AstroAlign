@@ -6,11 +6,13 @@ import { findShootingLocations } from '../lib/reverseSearch/findShootingLocation
 import type { ReverseSearchResult } from '../lib/reverseSearch/types';
 import { buildCorridorGeometry } from '../lib/reverseSearch/corridorGeometry';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
+import type { SelectedLandmark } from '../lib/geocoding/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { isDeepEqual } from '../lib/utils/searchUtils';
 import TolerancePicker from './TolerancePicker';
 import SearchRadiusPicker from './SearchRadiusPicker';
 import StateButton from './StateButton';
+import TargetLocationPicker from './TargetLocationPicker';
 import ShootingLocationResults from './ShootingLocationResults';
 
 const ShootingLocationMap = dynamic(() => import('./ShootingLocationMap'), {
@@ -22,10 +24,13 @@ const ShootingLocationMap = dynamic(() => import('./ShootingLocationMap'), {
 
 interface FindShootingLocationsProps {
   target: Target;
+  landmark?: SelectedLandmark | null;
   targetCoordinateError: string | null;
   timeZone: string | null;
   timeZoneStatus: 'idle' | 'loading' | 'error';
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
+  onSelectLandmark?: (_landmark: SelectedLandmark) => void;
+  onClearLandmark?: () => void;
 }
 
 type MoonPhaseMode = 'all' | 'full-moon';
@@ -40,40 +45,15 @@ interface SearchedInputs {
   fullMoonOnly: boolean;
 }
 
-function NumberField({
-  id,
-  label,
-  fieldValue,
-  onChange
-}: {
-  id: string;
-  label: string;
-  fieldValue: string;
-  onChange: (_value: string) => void;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="text-sm text-slate-300">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="number"
-        value={fieldValue}
-        onChange={(event) => onChange(event.target.value)}
-        step="any"
-        className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-      />
-    </div>
-  );
-}
-
 export default function FindShootingLocations({
   target,
+  landmark = null,
   targetCoordinateError,
   timeZone,
   timeZoneStatus,
-  onTargetChange
+  onTargetChange,
+  onSelectLandmark = () => {},
+  onClearLandmark = () => {}
 }: FindShootingLocationsProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
   const [date, setDate] = useState<string | null>(null);
@@ -201,27 +181,14 @@ export default function FindShootingLocations({
               )}
             </div>
             {targetCoordinateError && <p className="text-xs text-rose-300">{targetCoordinateError}</p>}
-            <NumberField
-              id="shooting-target-latitude"
-              label="Latitude"
-              fieldValue={String(target.latitude)}
-              onChange={(value) => onTargetChange('latitude', value)}
+            <TargetLocationPicker
+              idPrefix="shooting-target"
+              target={target}
+              landmark={landmark}
+              onTargetChange={onTargetChange}
+              onSelectLandmark={onSelectLandmark}
+              onClearLandmark={onClearLandmark}
             />
-            <NumberField
-              id="shooting-target-longitude"
-              label="Longitude"
-              fieldValue={String(target.longitude)}
-              onChange={(value) => onTargetChange('longitude', value)}
-            />
-            <NumberField
-              id="shooting-target-elevation"
-              label="Elevation (m)"
-              fieldValue={String(target.elevation)}
-              onChange={(value) => onTargetChange('elevation', value)}
-            />
-            <p className="text-xs text-slate-500">
-              The rise/set event is calculated at this location. Eventually this will represent a landmark.
-            </p>
           </section>
         </div>
 

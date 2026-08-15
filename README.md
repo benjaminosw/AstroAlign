@@ -12,6 +12,7 @@ A local Next.js app for astronomical photography alignment planning.
   - **Find Alignments** — search a date range for moments when a chosen object's azimuth aligns with a target bearing, with automatic time refinement and alignment-quality rating
   - **Find Shooting Locations** — reverse search: given a target, date, and Sun/Moon rise or set event, generate and rank camera locations whose line-of-sight bearing aligns with the event azimuth
 - MapLibre GL JS map showing the target, the ideal alignment corridor, and ranked shooting locations
+- Landmark search (OpenStreetMap Nominatim geocoding) and click-to-select map targeting for the target location
 - Geographic calculations for great-circle distance, bearing, geodesic destination, and target altitude
 - Timezone detection from coordinates with local date/time handling (tz-lookup + date-fns-tz)
 - Configurable alignment tolerance and search radius
@@ -21,7 +22,7 @@ A local Next.js app for astronomical photography alignment planning.
 ## Features
 
 ### Alignment Calculator
-Enter a target latitude/longitude, date, and time. The app detects the timezone from the coordinates, computes the Sun/Moon position at that moment, and reports the azimuth, altitude, and how closely a line drawn from the target toward the object aligns with the target-to-north reference.
+Enter a target latitude/longitude, date, and time. The target can be picked by typing a landmark name (searched against OpenStreetMap Nominatim) or by clicking/dragging a marker on the map; landmark coordinates and manual edits stay in sync. The app detects the timezone from the coordinates, computes the Sun/Moon position at that moment, and reports the azimuth, altitude, and how closely a line drawn from the target toward the object aligns with the target-to-north reference.
 
 ### Find Alignments
 Pick a Sun/Moon object, a target bearing, and a date range. The app searches for times when the object's azimuth matches the target bearing within the selected tolerance, refines each hit to peak alignment, and rates quality with an alignment-star score. Filters like "full moon ±1 day" are available for the Moon.
@@ -60,7 +61,8 @@ Development:
 ## Project structure
 
 - `src/app/` — Next.js pages and root layout
-- `src/components/` — UI components (`AlignmentApp`, `AlignmentCalculator`, `AlignmentFinder`, `FindShootingLocations`, `ShootingLocationMap`, `ShootingLocationResults`, `SearchRadiusPicker`, `TolerancePicker`, `TimePicker`, `StateButton`, `LocationInputs`)
+- `src/components/` — UI components (`AlignmentApp`, `AlignmentCalculator`, `AlignmentFinder`, `FindShootingLocations`, `ShootingLocationMap`, `ShootingLocationResults`, `SearchRadiusPicker`, `TolerancePicker`, `TimePicker`, `StateButton`, `LocationInputs`, `NumberField`, `LandmarkSearch`, `TargetSelectionMap`, `TargetLocationPicker`)
+- `src/lib/geocoding/` — landmark search abstraction and the Nominatim provider, with a debounced `useLandmarkSearch` hook
 - `src/lib/astronomy/` — Sun/Moon position, rise/set, and lunar phase helpers
 - `src/lib/geometry/` — bearing, distance, angular separation, altitude, destination point, unit conversions
 - `src/lib/alignment/` — alignment calculation, alignment finder, quality rating, refinement
@@ -77,3 +79,4 @@ Development:
 - The map uses default OpenStreetMap tiles; a satellite base layer is not configured yet.
 - No backend, accounts, or persistent storage — all computation runs in the browser.
 - Rise/set events are found astronomically; they do not account for local horizon obstruction.
+- Landmark search requires a network connection and uses the public OpenStreetMap Nominatim service (subject to its usage policy); results are debounced and limited but not cached.
