@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import AlignmentCalculator from '../AlignmentCalculator';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
@@ -8,6 +8,40 @@ import type { SelectedLandmark } from '../../lib/geocoding/types';
 
 vi.mock('../../lib/geocoding/index', () => ({
   activeGeocoder: { search: vi.fn() }
+}));
+
+vi.mock('../AlignmentMap', () => ({
+  __esModule: true,
+  default: (props: {
+    observer: { latitude: number; longitude: number };
+    target: { latitude: number; longitude: number };
+    object: string;
+    objectAzimuth: number;
+    targetBearing: number;
+    angularSeparation: number;
+    toleranceDegrees: number;
+    withinTolerance: boolean;
+    targetName?: string | null;
+    azimuthLabel?: string;
+    fitId?: number;
+  }) => (
+    <div
+      data-testid="mock-alignment-map"
+      data-object-azimuth={props.objectAzimuth}
+      data-target-bearing={props.targetBearing}
+      data-object={props.object}
+      data-angular-separation={props.angularSeparation}
+      data-tolerance={props.toleranceDegrees}
+      data-within-tolerance={props.withinTolerance}
+      data-observer-lat={props.observer.latitude}
+      data-observer-lon={props.observer.longitude}
+      data-target-lat={props.target.latitude}
+      data-target-lon={props.target.longitude}
+      data-target-name={props.targetName ?? ''}
+      data-azimuth-label={props.azimuthLabel ?? ''}
+      data-fit-id={props.fitId ?? 0}
+    />
+  )
 }));
 
 import { activeGeocoder } from '../../lib/geocoding/index';
@@ -45,6 +79,18 @@ function calculatedButton() {
   return screen.queryByRole('button', { name: /calculated/i });
 }
 
+function mapElement() {
+  return screen.getByTestId('mock-alignment-map');
+}
+
+function mapProp(name: string) {
+  return mapElement().getAttribute(name);
+}
+
+async function waitForMap() {
+  return screen.findByTestId('mock-alignment-map', {}, { timeout: 3000 });
+}
+
 describe('AlignmentCalculator workspace', () => {
   it('starts in needs-calculation state with a bright action button and placeholder results', () => {
     render(<Harness />);
@@ -58,7 +104,7 @@ describe('AlignmentCalculator workspace', () => {
     expect(screen.getByLabelText('Date')).toBeTruthy();
   });
 
-  it('shows results beside the inputs, flips the button, and keeps inputs editable after a calculation', () => {
+  it('shows results beside the inputs, flips the button, and keeps inputs editable after a calculation', async () => {
     render(<Harness />);
 
     fireEvent.click(calculateButton());
@@ -67,17 +113,19 @@ describe('AlignmentCalculator workspace', () => {
     expect(screen.getByText('Alignment result')).toBeTruthy();
     expect(screen.getByText(/(within|outside) .*° tolerance/i)).toBeTruthy();
     expect(screen.queryByText('Results will appear here after you calculate.')).toBeNull();
+    await waitForMap();
 
     const dateInput = screen.getByLabelText('Date') as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '2026-08-20' } });
     expect(dateInput.value).toBe('2026-08-20');
   });
 
-  it('marks inputs as changed and shows a stale indicator while keeping the previous result visible', () => {
+  it('marks inputs as changed and shows a stale indicator while keeping the previous result visible', async () => {
     render(<Harness />);
 
     fireEvent.click(calculateButton());
     expect(calculatedButton()).toBeTruthy();
+    await waitForMap();
 
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
 
@@ -94,6 +142,7 @@ describe('AlignmentCalculator workspace', () => {
     async function recalcThenChange(change: () => void) {
       fireEvent.click(screen.getByRole('button', { name: /calculate|calculated/i }));
       await screen.findByRole('button', { name: /calculated/i });
+      await waitForMap();
       change();
       expect(calculatedButton()).toBeNull();
       expect(calculateButton()).toBeTruthy();
@@ -114,11 +163,12 @@ describe('AlignmentCalculator workspace', () => {
     );
   });
 
-  it('updates the result on recalculate and clears the stale indicator', () => {
+  it('updates the result on recalculate and clears the stale indicator', async () => {
     render(<Harness />);
 
     fireEvent.click(calculateButton());
     expect(calculatedButton()).toBeTruthy();
+    await waitForMap();
 
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
@@ -177,6 +227,81 @@ describe('AlignmentCalculator workspace', () => {
     expect(calculateButton()).toBeTruthy();
     expect(screen.getByText(/inputs changed/i)).toBeTruthy();
     expect(screen.getByText('Marina Bay Sands')).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('renders the map after a calculation using the calculated object, azimuth, and coordinates', async () => {
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    const map = await waitForMap();
+
+    expect(map.getAttribute('data-object')).toBe('Sun');
+    expect(map.getAttribute('data-azimuth-label')).toBe('Sun azimuth');
+    expect(Number(map.getAttribute('data-object-azimuth'))).toBeGreaterThan(0);
+    expect(Number(map.getAttribute('data-target-bearing'))).toBeGreaterThan(0);
+    expect(map.getAttribute('data-observer-lat')).toBe(String(DEFAULT_OBSERVER.latitude));
+    expect(map.getAttribute('data-observer-lon')).toBe(String(DEFAULT_OBSERVER.longitude));
+    expect(map.getAttribute('data-target-lat')).toBe(String(DEFAULT_TARGET.latitude));
+    expect(map.getAttribute('data-target-lon')).toBe(String(DEFAULT_TARGET.longitude));
+    expect(Number(map.getAttribute('data-fit-id'))).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not update the map azimuth when inputs change before recalculation', async () => {
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await waitForMap();
+    const azimuthBefore = mapProp('data-object-azimuth');
+    const observerBefore = mapProp('data-observer-lat');
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
+    fireEvent.change(screen.getAllByLabelText('Latitude')[0], { target: { value: '1.5' } });
+
+    expect(screen.getByText(/inputs changed/i)).toBeTruthy();
+    expect(mapProp('data-object-azimuth')).toBe(azimuthBefore);
+    expect(mapProp('data-observer-lat')).toBe(observerBefore);
+  });
+
+  it('updates both the numerical result and the map on recalculation', async () => {
+    render(<Harness />);
+
+    fireEvent.click(calculateButton());
+    await waitForMap();
+    const azimuthBefore = mapProp('data-object-azimuth');
+    const fitBefore = mapProp('data-fit-id');
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-01-01' } });
+    fireEvent.click(calculateButton());
+
+    expect(screen.queryByText(/inputs changed/i)).toBeNull();
+    expect(screen.getByText(/1 Jan 2030/)).toBeTruthy();
+    await waitFor(() => {
+      expect(mapProp('data-object-azimuth')).not.toBe(azimuthBefore);
+    });
+    expect(Number(mapProp('data-fit-id'))).toBeGreaterThan(Number(fitBefore));
+  });
+
+  it('shows the selected landmark name on the map when calculated from a landmark selection', async () => {
+    vi.useFakeTimers();
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      { id: 'mbs', name: 'Marina Bay Sands', locality: 'Singapore', country: 'Singapore', latitude: 1.2834, longitude: 103.8607 }
+    ]);
+    render(<Harness />);
+
+    fireEvent.change(screen.getByPlaceholderText('Search for a landmark...'), { target: { value: 'Marina Bay Sands' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    fireEvent.mouseDown(screen.getByText('Marina Bay Sands'));
+
+    fireEvent.click(calculateButton());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(mapProp('data-target-name')).toBe('Marina Bay Sands');
+    expect(mapProp('data-target-lat')).toBe('1.2834');
     vi.useRealTimers();
   });
 });

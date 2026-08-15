@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { calculateAlignment, AlignmentResult } from '../lib/alignment/calculateAlignment';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
@@ -10,6 +11,13 @@ import LocationInputs from './LocationInputs';
 import TimePicker from './TimePicker';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
+
+const AlignmentMap = dynamic(() => import('./AlignmentMap'), {
+  ssr: false,
+  loading: () => (
+    <div data-testid="alignment-map-loading" className="h-[420px] w-full rounded-2xl border border-slate-800 bg-slate-900" />
+  )
+});
 
 interface AlignmentCalculatorProps {
   observer: GeographicPoint;
@@ -30,6 +38,7 @@ interface ResultSnapshot {
   date: string;
   time: string;
   toleranceDegrees: number;
+  landmarkName: string | null;
 }
 
 type CalculatedInputs = {
@@ -67,6 +76,7 @@ export default function AlignmentCalculator({
   const [snapshot, setSnapshot] = useState<ResultSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastCalculatedInputs, setLastCalculatedInputs] = useState<CalculatedInputs | null>(null);
+  const [mapFitId, setMapFitId] = useState(0);
 
   useEffect(() => {
     if (date !== null && time !== null) {
@@ -118,8 +128,9 @@ export default function AlignmentCalculator({
 
     try {
       const result = calculateAlignment({ observer, target, object, date, time, timeZone, toleranceDegrees });
-      setSnapshot({ result, object, date, time, toleranceDegrees });
+      setSnapshot({ result, object, date, time, toleranceDegrees, landmarkName: landmark?.name ?? null });
       setLastCalculatedInputs(currentInputs);
+      setMapFitId((id) => id + 1);
       setError(null);
     } catch (exception) {
       setError((exception as Error).message);
@@ -210,7 +221,7 @@ export default function AlignmentCalculator({
             role="status"
             className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
           >
-            ⚠ Inputs changed — recalculate to update this result
+            ⚠ Inputs changed — recalculate to update this result. The map shows the last calculated alignment.
           </div>
         )}
 
@@ -220,6 +231,25 @@ export default function AlignmentCalculator({
 
         {snapshot ? (
           <div>
+            {lastCalculatedInputs && (
+              <div className="mt-4">
+                <AlignmentMap
+                  observer={lastCalculatedInputs.observer}
+                  target={lastCalculatedInputs.target}
+                  targetName={snapshot.landmarkName}
+                  object={snapshot.object}
+                  objectAzimuth={snapshot.result.object.azimuth}
+                  targetBearing={snapshot.result.target.bearing}
+                  targetDistanceKm={snapshot.result.target.distanceKm}
+                  angularSeparation={snapshot.result.alignment.angularSeparation}
+                  toleranceDegrees={snapshot.toleranceDegrees}
+                  withinTolerance={snapshot.result.alignment.withinTolerance}
+                  azimuthLabel={`${snapshot.object} azimuth`}
+                  fitId={mapFitId}
+                />
+              </div>
+            )}
+
             <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-3">
               <p className="text-lg font-semibold text-white">
                 {snapshot.object} · {formatDisplayDate(snapshot.date)} · {snapshot.time}

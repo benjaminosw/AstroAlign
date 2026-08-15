@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { findAlignments } from '../lib/alignment/findAlignments';
 import type { AlignmentCandidate } from '../lib/alignment/types';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
@@ -10,6 +11,13 @@ import { isDeepEqual } from '../lib/utils/searchUtils';
 import LocationInputs from './LocationInputs';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
+
+const AlignmentMap = dynamic(() => import('./AlignmentMap'), {
+  ssr: false,
+  loading: () => (
+    <div data-testid="alignment-map-loading" className="h-[420px] w-full rounded-2xl border border-slate-800 bg-slate-900" />
+  )
+});
 
 interface AlignmentFinderProps {
   observer: GeographicPoint;
@@ -32,6 +40,7 @@ type SearchedInputs = {
   endDate: string | null;
   toleranceDegrees: number;
   fullMoonOnly: boolean;
+  landmarkName: string | null;
 };
 
 export default function AlignmentFinder({
@@ -57,6 +66,8 @@ export default function AlignmentFinder({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [lastSearchedInputs, setLastSearchedInputs] = useState<SearchedInputs | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [mapFitId, setMapFitId] = useState(0);
   const abortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -82,7 +93,8 @@ export default function AlignmentFinder({
     startDate,
     endDate,
     toleranceDegrees,
-    fullMoonOnly
+    fullMoonOnly,
+    landmarkName: landmark?.name ?? null
   };
 
   const isCurrent = lastSearchedInputs !== null && isDeepEqual(lastSearchedInputs, currentInputs);
@@ -150,8 +162,14 @@ export default function AlignmentFinder({
         return a.localTime.localeCompare(b.localTime);
       });
 
+      const firstVisibleIndex = showMatchesOnly
+        ? sorted.findIndex((candidate) => candidate.alignment.withinTolerance)
+        : 0;
+
       setResults(sorted);
-      setLastSearchedInputs(currentInputs);
+      setLastSearchedInputs({ ...currentInputs, landmarkName: landmark?.name ?? null });
+      setSelectedIndex(firstVisibleIndex >= 0 ? firstVisibleIndex : null);
+      setMapFitId((id) => id + 1);
       setStatus('completed');
     } catch (searchError) {
       setError((searchError as Error).message === 'Search canceled' ? 'Search canceled.' : (searchError as Error).message);
@@ -167,12 +185,24 @@ export default function AlignmentFinder({
 
   const visibleResults = results ? (showMatchesOnly ? results.filter((candidate) => candidate.alignment.withinTolerance) : results) : null;
 
+  useEffect(() => {
+    if (results === null || visibleResults === null || visibleResults.length === 0) {
+      return;
+    }
+    if (selectedIndex !== null && visibleResults[selectedIndex] === undefined) {
+      setSelectedIndex(0);
+      setMapFitId((id) => id + 1);
+    }
+  }, [visibleResults, selectedIndex, results]);
+
+  const selectedCandidate = visibleResults && selectedIndex !== null ? visibleResults[selectedIndex] ?? null : null;
+
   return (
     <div
       data-testid="finder-workspace"
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,5fr)_minmax(0,8fr)]"
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,11fr)]"
     >
-      <div className="lg:sticky lg:top-8">
+      <div className="space-y-6 lg:sticky lg:top-8">
         <LocationInputs
           observer={observer}
           target={target}
@@ -185,9 +215,7 @@ export default function AlignmentFinder({
           onSelectLandmark={onSelectLandmark}
           onClearLandmark={onClearLandmark}
         />
-      </div>
 
-      <div className="lg:sticky lg:top-8">
         <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
           <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Search</h2>
 
@@ -317,7 +345,7 @@ export default function AlignmentFinder({
             role="status"
             className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
           >
-            ⚠ Inputs changed — search again to update these results
+            ⚠ Inputs changed — search again to update these results. The map shows the last searched alignment.
           </div>
         )}
 
@@ -328,42 +356,92 @@ export default function AlignmentFinder({
         ) : visibleResults === null || visibleResults.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">No alignments found within the selected range and tolerance.</p>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-700 bg-slate-900/90">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wider text-slate-400">
-                  <th className="px-4 py-3 font-medium">Event</th>
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Local time</th>
-                  <th className="px-4 py-3 font-medium">Azimuth difference</th>
-                  <th className="px-4 py-3 font-medium">Result</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,9fr)]">
+            <div className="lg:max-h-[560px] lg:overflow-y-auto lg:pr-1">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Alignments</p>
+              <div className="space-y-2" role="list" aria-label="Alignment results">
                 {visibleResults.map((candidate, index) => (
-                  <tr key={`${candidate.localDate}-${candidate.localTime}-${index}`} className="border-b border-slate-800 last:border-0">
-                    <td className="px-4 py-3 font-medium text-slate-100">
-                      {candidate.eventType === 'rise' ? '↑ ' : '↓ '}
-                      {candidate.eventLabel}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-slate-300">{candidate.localDate}</td>
-                    <td className="px-4 py-3 tabular-nums text-slate-300">{candidate.localTime}</td>
-                    <td className="px-4 py-3 tabular-nums text-slate-100">{candidate.score.toFixed(3)}°</td>
-                    <td className="px-4 py-3">
-                      {candidate.alignment.withinTolerance ? (
-                        <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-                          Match
+                  <div
+                    key={`${candidate.localDate}-${candidate.localTime}-${candidate.eventType}-${index}`}
+                    role="listitem"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={selectedIndex === index}
+                      data-testid="alignment-result-item"
+                      onClick={() => {
+                        setSelectedIndex(index);
+                        setMapFitId((id) => id + 1);
+                      }}
+                      className={`w-full rounded-2xl border p-3 text-left transition ${
+                        selectedIndex === index
+                          ? 'border-sky-500 bg-sky-500/10'
+                          : 'border-slate-700 bg-slate-900/80 hover:border-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-white">
+                          {selectedIndex === index && <span aria-hidden="true">✓ </span>}
+                          {candidate.eventType === 'rise' ? '↑' : '↓'} {candidate.eventLabel}
                         </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
-                          Outside
-                        </span>
-                      )}
-                    </td>
-                  </tr>
+                        <span className="tabular-nums text-sm text-slate-300">{candidate.score.toFixed(2)}°</span>
+                      </div>
+                      <div className="mt-1 text-sm tabular-nums text-slate-400">
+                        {candidate.localDate} · {candidate.localTime}
+                      </div>
+                      <div className="mt-2">
+                        {candidate.alignment.withinTolerance ? (
+                          <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+                            Match
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
+                            Outside
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
+
+            <div>
+              {selectedCandidate && lastSearchedInputs ? (
+                <>
+                  <div
+                    data-testid="selected-result-header"
+                    className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-2.5 text-sm"
+                  >
+                    <p className="font-semibold text-white">
+                      Selected: {selectedCandidate.localDate} · {selectedCandidate.eventLabel}
+                    </p>
+                    <p className="text-slate-400">
+                      {selectedCandidate.eventLabel} azimuth:{' '}
+                      <span className="font-semibold text-amber-300">{selectedCandidate.object.azimuth.toFixed(2)}°</span>
+                    </p>
+                  </div>
+                  <AlignmentMap
+                    observer={lastSearchedInputs.observer}
+                    target={lastSearchedInputs.target}
+                    targetName={lastSearchedInputs.landmarkName}
+                    object={lastSearchedInputs.object}
+                    objectAzimuth={selectedCandidate.object.azimuth}
+                    targetBearing={selectedCandidate.target.bearing}
+                    targetDistanceKm={selectedCandidate.target.distanceKm}
+                    angularSeparation={selectedCandidate.alignment.angularSeparation}
+                    toleranceDegrees={lastSearchedInputs.toleranceDegrees}
+                    withinTolerance={selectedCandidate.alignment.withinTolerance}
+                    azimuthLabel={`${selectedCandidate.eventLabel} azimuth`}
+                    fitId={mapFitId}
+                  />
+                </>
+              ) : (
+                <div className="flex h-[420px] w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-950/70 px-6 text-center text-sm text-slate-500">
+                  Select an alignment from the list to view it on the map.
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>
