@@ -1,6 +1,7 @@
 import type { AlignmentCandidate } from './types';
 import type { TimeFilterOption } from './timeFilter';
 import { isTimeWithinWindow, resolveTimeWindow } from './timeFilter';
+import type { MoonPhaseInfo } from '../astronomy/lunarPhase';
 
 export interface AlignmentResultFilters {
   moonPhases: string[] | null;
@@ -9,28 +10,40 @@ export interface AlignmentResultFilters {
   customEndTime?: string;
 }
 
-export function filterAlignmentResults(
-  candidates: AlignmentCandidate[],
+export interface MoonAndTimeFilterable {
+  moonPhase?: MoonPhaseInfo;
+  localTime: string;
+}
+
+export function filterByMoonPhaseAndTime<T extends MoonAndTimeFilterable>(
+  items: T[],
   filters: AlignmentResultFilters
-): AlignmentCandidate[] {
-  return candidates.filter((candidate) => {
-    if (filters.moonPhases !== null && candidate.moonPhase !== undefined) {
-      if (!filters.moonPhases.includes(candidate.moonPhase.name)) {
+): T[] {
+  return items.filter((item) => {
+    if (filters.moonPhases !== null && item.moonPhase !== undefined) {
+      if (!filters.moonPhases.includes(item.moonPhase.name)) {
         return false;
       }
     }
 
-    if (candidate.moonPhase !== undefined) {
+    if (item.moonPhase !== undefined) {
       const timeWindow = resolveTimeWindow({
         option: filters.timeFilter,
         customStartTime: filters.customStartTime,
         customEndTime: filters.customEndTime
       });
-      if (timeWindow && !isTimeWithinWindow(candidate.localTime, timeWindow)) {
+      if (timeWindow && !isTimeWithinWindow(item.localTime, timeWindow)) {
         return false;
       }
     }
 
     return true;
   });
+}
+
+export function filterAlignmentResults(
+  candidates: AlignmentCandidate[],
+  filters: AlignmentResultFilters
+): AlignmentCandidate[] {
+  return filterByMoonPhaseAndTime(candidates, filters);
 }

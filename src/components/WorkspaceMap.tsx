@@ -13,6 +13,7 @@ import type { AstroObject } from '../types/astronomy';
 import { getMapStyle } from '../lib/map/mapConfig';
 import { directionEndpoint, directionLengthKm, toleranceSector } from '../lib/map/alignmentGeometry';
 import { greatCircleDistanceKm } from '../lib/geometry/distance';
+import { buildCameraElement, buildPinElement, setMarkerActive } from '../lib/map/markers';
 
 type LocationId = 'observer' | 'target';
 
@@ -71,83 +72,6 @@ function polygonFeature(coordinates: Array<[number, number]>) {
     geometry: { type: 'Polygon' as const, coordinates: [coordinates] },
     properties: {}
   };
-}
-
-function buildPinElement(color: string): HTMLElement {
-  const element = document.createElement('div');
-  element.style.cssText = [
-    'display:flex',
-    'cursor:grab',
-    'user-select:none',
-    'touch-action:none',
-    'filter:drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))',
-    'transition:filter 140ms ease'
-  ].join(';');
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 32 40');
-  svg.setAttribute('width', '28');
-  svg.setAttribute('height', '36');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.style.cssText = [
-    'display:block',
-    'transition:transform 140ms ease',
-    'transform-origin:50% 100%'
-  ].join(';');
-  svg.innerHTML = [
-    `<path d="M16 1.5C8.8 1.5 3 7.3 3 14.5 3 23 16 38.5 16 38.5 16 38.5 29 23 29 14.5 29 7.3 23.2 1.5 16 1.5Z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.5"/>`,
-    '<circle cx="16" cy="14" r="5.5" fill="white"/>',
-    `<circle cx="16" cy="14" r="3" fill="${color}"/>`
-  ].join('');
-  element.appendChild(svg);
-  return element;
-}
-
-function buildCameraElement(color: string): HTMLElement {
-  const element = document.createElement('div');
-  element.style.cssText = [
-    'display:flex',
-    'cursor:grab',
-    'user-select:none',
-    'touch-action:none',
-    'filter:drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))',
-    'transition:filter 140ms ease'
-  ].join(';');
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 32 36');
-  svg.setAttribute('width', '28');
-  svg.setAttribute('height', '32');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.style.cssText = [
-    'display:block',
-    'transition:transform 140ms ease',
-    'transform-origin:50% 100%'
-  ].join(';');
-  svg.innerHTML = [
-    `<path d="M12 7 L13 4 L19 4 L20 7 Z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.2"/>`,
-    `<path d="M7 7 h18 a3 3 0 0 1 3 3 v8 a3 3 0 0 1 -3 3 h-18 a3 3 0 0 1 -3 -3 v-8 a3 3 0 0 1 3 -3 z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.5"/>`,
-    '<circle cx="16" cy="12.5" r="4.5" fill="white"/>',
-    `<circle cx="16" cy="12.5" r="2.75" fill="${color}"/>`,
-    `<path d="M13 21 L7 35 M19 21 L25 35 M16 21 L16 35" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>`,
-    `<circle cx="7" cy="35" r="1.5" fill="${color}"/>`,
-    `<circle cx="25" cy="35" r="1.5" fill="${color}"/>`,
-    `<circle cx="16" cy="35" r="1.5" fill="${color}"/>`
-  ].join('');
-  element.appendChild(svg);
-  return element;
-}
-
-function setMarkerActive(element: HTMLElement | null, isActive: boolean) {
-  if (!element) {
-    return;
-  }
-  element.setAttribute('data-marker-active', String(isActive));
-  const svg = element.querySelector('svg');
-  if (svg) {
-    svg.style.transform = isActive ? 'scale(1.25)' : 'scale(1)';
-  }
-  element.style.filter = isActive
-    ? 'drop-shadow(0 0 10px rgb(56 189 248 / 0.8)) drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))'
-    : 'drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))';
 }
 
 function buildObjectMarkerElement(object: AstroObject): HTMLElement {

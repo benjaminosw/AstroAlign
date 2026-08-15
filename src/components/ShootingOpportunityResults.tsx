@@ -1,0 +1,161 @@
+'use client';
+
+import type { AstroObject } from '../types/astronomy';
+import type { ShootingOpportunity } from '../lib/opportunities/types';
+import { formatResultDate } from '../lib/utils/formatResultDate';
+
+interface ShootingOpportunityResultsProps {
+  allResults: ShootingOpportunity[] | null;
+  visibleResults: ShootingOpportunity[];
+  searchedObject: AstroObject;
+  filtersActive: boolean;
+  isCurrent: boolean;
+  selectedId: string | null;
+  onSelect: (_id: string) => void;
+  onResetFilters: () => void;
+}
+
+function positionLabel(opportunity: ShootingOpportunity): string {
+  if (opportunity.position.source === 'point') {
+    return opportunity.position.pointName || 'Shooting point';
+  }
+  return `${opportunity.position.distanceFromStartKm.toFixed(2)} km from start`;
+}
+
+function positionHint(opportunity: ShootingOpportunity): string {
+  if (opportunity.position.source === 'path') {
+    return `Valid zone ${opportunity.position.zoneStartKm.toFixed(2)}–${opportunity.position.zoneEndKm.toFixed(2)} km from start`;
+  }
+  return 'Point on shooting area';
+}
+
+export default function ShootingOpportunityResults({
+  allResults,
+  visibleResults,
+  searchedObject,
+  filtersActive,
+  isCurrent,
+  selectedId,
+  onSelect,
+  onResetFilters
+}: ShootingOpportunityResultsProps) {
+  const totalCount = allResults?.length ?? 0;
+  const shownCount = visibleResults.length;
+
+  return (
+    <section data-testid="shooting-opportunity-results" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Shooting opportunities</h2>
+        {allResults !== null && (
+          <p data-testid="opportunities-count" className="text-sm font-semibold text-white">
+            {shownCount !== totalCount || filtersActive
+              ? `${totalCount} opportunities found · ${shownCount} shown`
+              : `${shownCount} opportunit${shownCount === 1 ? 'y' : 'ies'}`}
+          </p>
+        )}
+      </div>
+
+      {allResults !== null && (
+        <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <p className="font-semibold">Geometric alignment only</p>
+          <p className="mt-1 text-amber-200/80">
+            Opportunities are checked for bearing alignment only. They have not been checked for accessibility, roads,
+            obstructions, terrain, visibility or legal access.
+          </p>
+        </div>
+      )}
+
+      {allResults !== null && !isCurrent && (
+        <div
+          role="status"
+          className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-300"
+        >
+          ⚠ Inputs changed — search again to update these results. The map shows the last searched opportunity.
+        </div>
+      )}
+
+      {allResults === null ? (
+        <p className="mt-4 text-sm text-slate-500">Results will appear here after you search.</p>
+      ) : allResults.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          No shooting opportunities found within the selected date range and tolerance.
+        </p>
+      ) : searchedObject === 'Moon' && visibleResults.length === 0 && totalCount > 0 && shownCount === 0 ? (
+        <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+          <p className="text-sm font-medium text-slate-200">No results match the current filters.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {totalCount} opportunit{totalCount === 1 ? 'y was' : 'ies were'} calculated.
+          </p>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="mt-3 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : visibleResults.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+          <p className="text-sm font-medium text-slate-200">No results match the current filters.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {totalCount} opportunit{totalCount === 1 ? 'y was' : 'ies were'} calculated.
+          </p>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="mt-3 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-3 max-h-[420px] overflow-y-auto rounded-2xl border border-slate-800 p-1.5">
+          {visibleResults.map((opportunity, index) => (
+            <button
+              key={`${opportunity.id}-${index}`}
+              type="button"
+              data-testid="opportunity-result-item"
+              aria-pressed={opportunity.id === selectedId}
+              onClick={() => onSelect(opportunity.id)}
+              className={`grid w-full items-center gap-x-2 rounded-lg px-3 py-1.5 text-left text-sm transition ${
+                opportunity.moonPhase
+                  ? 'grid-cols-[1.25rem_minmax(0,1fr)_minmax(0,1fr)_1.5rem]'
+                  : 'grid-cols-[1.25rem_minmax(0,1fr)_minmax(0,1fr)]'
+              } ${opportunity.id === selectedId ? 'bg-violet-500/10 text-white' : 'text-slate-300 hover:bg-slate-800/60'}`}
+            >
+              <span aria-hidden="true" className="text-center">
+                {opportunity.eventType === 'rise' ? '↑' : '↓'}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate font-semibold">{opportunity.eventLabel}</span>
+                <span className="block whitespace-nowrap text-xs tabular-nums text-slate-400">
+                  {formatResultDate(opportunity.localDate)} · {opportunity.localTime}
+                </span>
+              </span>
+              <span className="min-w-0 text-right" title={positionHint(opportunity)}>
+                <span className="block truncate font-medium text-slate-200">{positionLabel(opportunity)}</span>
+                <span className="block whitespace-nowrap text-xs tabular-nums text-slate-400">
+                  {opportunity.position.alignmentError.toFixed(2)}°
+                </span>
+              </span>
+              {opportunity.moonPhase && (
+                <span
+                  data-testid="opportunity-moon-phase"
+                  data-phase-name={opportunity.moonPhase.name}
+                  className="whitespace-nowrap text-right tabular-nums text-slate-400"
+                  title={opportunity.moonPhase.name}
+                >
+                  <span aria-hidden="true">{opportunity.moonPhase.emoji}</span>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

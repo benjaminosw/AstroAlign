@@ -8,7 +8,7 @@ import { getTimezoneFromCoordinates } from '../lib/timezone/getTimezoneFromCoord
 import { validateCoordinates as validateCoordinateValues } from '../lib/timezone/validateCoordinates';
 import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
-import FindShootingLocations from './FindShootingLocations';
+import FindShootingOpportunities from './FindShootingOpportunities';
 
 type TabId = 'calculate' | 'find' | 'shooting';
 
@@ -25,8 +25,8 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
   },
   {
     id: 'shooting',
-    label: 'Find shooting locations',
-    description: 'Given a target, date, Sun/Moon and rise/set event, find locations from which to shoot the aligned event.'
+    label: 'Find shooting opportunities',
+    description: 'Search across a date range and a shooting area for Sun/Moon rise and set events that align with your target.'
   }
 ];
 
@@ -161,7 +161,7 @@ export default function AlignmentApp() {
       {activeTab === 'calculate' && <AlignmentCalculator {...commonProps} />}
       {activeTab === 'find' && <AlignmentFinder {...commonProps} />}
       {activeTab === 'shooting' && (
-        <FindShootingLocations
+        <FindShootingOpportunities
           target={target}
           landmark={targetLandmark}
           targetCoordinateError={targetCoordinateError}
