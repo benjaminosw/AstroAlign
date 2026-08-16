@@ -2,51 +2,35 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import {
+  deleteSavedAlignmentRecord,
+  deleteSetupRecord,
+  deleteShootingLocationRecord,
+  deleteTargetRecord,
+  clearAllData,
+  saveSavedAlignment,
+  saveSetup,
+  saveShootingLocation,
+  saveTarget
+} from '../storage/repository';
+import { useOptionalAppState } from '../storage/appState';
 import type {
+  SavedAlignment,
   SavedPoint,
   SavedShootingLocation,
   SavedShootingGeometry,
   SavedSetup,
-  SavedTarget
+  SavedTarget,
+  SaveAlignmentInput
 } from './types';
-import { coordinateKey, generatedLocationName, generatedTargetName, geometryKey } from './types';
-
-const TARGETS_KEY = 'astroalign.saved.targets';
-const LOCATIONS_KEY = 'astroalign.saved.locations';
-const SETUPS_KEY = 'astroalign.saved.setups';
-
-interface StoredCollection<T> {
-  version: 1;
-  items: T[];
-}
-
-function loadCollection<T>(key: string): T[] {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw) as StoredCollection<T>;
-    return Array.isArray(parsed?.items) ? parsed.items : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistCollection<T>(key: string, items: T[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  const payload: StoredCollection<T> = { version: 1, items };
-  try {
-    window.localStorage.setItem(key, JSON.stringify(payload));
-  } catch {
-    // Storage unavailable; keep in-memory state.
-  }
-}
+import {
+  coordinateKey,
+  generatedAlignmentName,
+  generatedLocationName,
+  generatedTargetName,
+  geometryKey,
+  savedAlignmentDedupeKey
+} from './types';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -94,6 +78,11 @@ export interface SavedLocationsValue {
   deleteSetup: (_id: string) => void;
   findTargetByCoordinates: (_latitude: number, _longitude: number) => SavedTarget | null;
   findShootingLocationByGeometryKey: (_key: string) => SavedShootingLocation | null;
+  savedAlignments: SavedAlignment[];
+  addSavedAlignment: (_input: SaveAlignmentInput, _options?: { name?: string }) => SavedAlignment;
+  updateSavedAlignment: (_id: string, _patch: { name?: string }) => SavedAlignment;
+  deleteSavedAlignment: (_id: string) => void;
+  findSavedAlignmentByDedupeKey: (_key: string) => SavedAlignment | null;
   boundTargetId: string | null;
   boundShootingLocationId: string | null;
   bindTarget: (_id: string | null) => void;
@@ -107,37 +96,24 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
   const [targets, setTargets] = useState<SavedTarget[]>([]);
   const [shootingLocations, setShootingLocations] = useState<SavedShootingLocation[]>([]);
   const [setups, setSetups] = useState<SavedSetup[]>([]);
+  const [savedAlignments, setSavedAlignments] = useState<SavedAlignment[]>([]);
   const [boundTargetId, setBoundTargetId] = useState<string | null>(null);
   const [boundShootingLocationId, setBoundShootingLocationId] = useState<string | null>(null);
-  const loadedRef = useRef(false);
+  const hydratedOnceRef = useRef(false);
+
+  const appState = useOptionalAppState();
+  const hydratedData = appState?.hydratedData ?? null;
 
   useEffect(() => {
-    if (!loadedRef.current) {
+    if (!hydratedData || hydratedOnceRef.current) {
       return;
     }
-    persistCollection(TARGETS_KEY, targets);
-  }, [targets]);
-
-  useEffect(() => {
-    if (!loadedRef.current) {
-      return;
-    }
-    persistCollection(LOCATIONS_KEY, shootingLocations);
-  }, [shootingLocations]);
-
-  useEffect(() => {
-    if (!loadedRef.current) {
-      return;
-    }
-    persistCollection(SETUPS_KEY, setups);
-  }, [setups]);
-
-  useEffect(() => {
-    setTargets(loadCollection<SavedTarget>(TARGETS_KEY));
-    setShootingLocations(loadCollection<SavedShootingLocation>(LOCATIONS_KEY));
-    setSetups(loadCollection<SavedSetup>(SETUPS_KEY));
-    loadedRef.current = true;
-  }, []);
+    hydratedOnceRef.current = true;
+    setTargets(hydratedData.targets);
+    setShootingLocations(hydratedData.shootingLocations);
+    setSetups(hydratedData.shootingSetups);
+    setSavedAlignments(hydratedData.savedAlignments);
+  }, [hydratedData]);
 
   function addTarget(input: NewTargetInput): SavedTarget {
     const now = nowIso();
@@ -152,6 +128,7 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
       updatedAt: now
     };
     setTargets((prev) => [...prev, target]);
+    void saveTarget(target).catch(() => {});
     return target;
   }
 
@@ -170,12 +147,18 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
       updatedAt: nowIso()
     };
     setTargets((prev) => prev.map((target) => (target.id === id ? updated : target)));
+    void saveTarget(updated).catch(() => {});
     return updated;
   }
 
   function deleteTarget(id: string) {
+    const affectedSetups = setups.filter((setup) => setup.targetId === id);
     setTargets((prev) => prev.filter((target) => target.id !== id));
     setSetups((prev) => prev.filter((setup) => setup.targetId !== id));
+    void deleteTargetRecord(id).catch(() => {});
+    for (const setup of affectedSetups) {
+      void deleteSetupRecord(setup.id).catch(() => {});
+    }
     if (boundTargetId === id) {
       setBoundTargetId(null);
     }
@@ -192,6 +175,7 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
       updatedAt: now
     };
     setShootingLocations((prev) => [...prev, location]);
+    void saveShootingLocation(location).catch(() => {});
     return location;
   }
 
@@ -208,12 +192,18 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
       updatedAt: nowIso()
     };
     setShootingLocations((prev) => prev.map((location) => (location.id === id ? updated : location)));
+    void saveShootingLocation(updated).catch(() => {});
     return updated;
   }
 
   function deleteShootingLocation(id: string) {
+    const affectedSetups = setups.filter((setup) => setup.shootingLocationId === id);
     setShootingLocations((prev) => prev.filter((location) => location.id !== id));
     setSetups((prev) => prev.filter((setup) => setup.shootingLocationId !== id));
+    void deleteShootingLocationRecord(id).catch(() => {});
+    for (const setup of affectedSetups) {
+      void deleteSetupRecord(setup.id).catch(() => {});
+    }
     if (boundShootingLocationId === id) {
       setBoundShootingLocationId(null);
     }
@@ -230,6 +220,7 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
       updatedAt: now
     };
     setSetups((prev) => [...prev, setup]);
+    void saveSetup(setup).catch(() => {});
     return setup;
   }
 
@@ -246,11 +237,13 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
       updatedAt: nowIso()
     };
     setSetups((prev) => prev.map((setup) => (setup.id === id ? updated : setup)));
+    void saveSetup(updated).catch(() => {});
     return updated;
   }
 
   function deleteSetup(id: string) {
     setSetups((prev) => prev.filter((setup) => setup.id !== id));
+    void deleteSetupRecord(id).catch(() => {});
   }
 
   function findTargetByCoordinates(latitude: number, longitude: number): SavedTarget | null {
@@ -270,16 +263,69 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  function addSavedAlignment(input: SaveAlignmentInput, options?: { name?: string }): SavedAlignment {
+    const dedupeKey = savedAlignmentDedupeKey(input);
+    const existing = savedAlignments.find((alignment) => alignment.dedupeKey === dedupeKey);
+    const now = nowIso();
+    if (existing) {
+      const updated: SavedAlignment = {
+        ...existing,
+        ...input,
+        name: options?.name?.trim() || existing.name,
+        dedupeKey,
+        updatedAt: now
+      };
+      setSavedAlignments((prev) => prev.map((alignment) => (alignment.id === updated.id ? updated : alignment)));
+      void saveSavedAlignment(updated).catch(() => {});
+      return updated;
+    }
+    const alignment: SavedAlignment = {
+      id: createId('alignment'),
+      name: options?.name?.trim() || generatedAlignmentName(input),
+      dedupeKey,
+      ...input,
+      createdAt: now,
+      updatedAt: now
+    };
+    setSavedAlignments((prev) => [...prev, alignment]);
+    void saveSavedAlignment(alignment).catch(() => {});
+    return alignment;
+  }
+
+  function updateSavedAlignment(id: string, patch: { name?: string }): SavedAlignment {
+    const existing = savedAlignments.find((alignment) => alignment.id === id);
+    if (!existing) {
+      throw new Error(`Saved alignment ${id} not found`);
+    }
+    const updated: SavedAlignment = {
+      ...existing,
+      name: patch.name?.trim() || existing.name,
+      updatedAt: nowIso()
+    };
+    setSavedAlignments((prev) => prev.map((alignment) => (alignment.id === id ? updated : alignment)));
+    void saveSavedAlignment(updated).catch(() => {});
+    return updated;
+  }
+
+  function deleteSavedAlignment(id: string) {
+    setSavedAlignments((prev) => prev.filter((alignment) => alignment.id !== id));
+    void deleteSavedAlignmentRecord(id).catch(() => {});
+  }
+
+  function findSavedAlignmentByDedupeKey(key: string): SavedAlignment | null {
+    return savedAlignments.find((alignment) => alignment.dedupeKey === key) ?? null;
+  }
+
   function resetAll() {
     setTargets([]);
     setShootingLocations([]);
     setSetups([]);
+    setSavedAlignments([]);
     setBoundTargetId(null);
     setBoundShootingLocationId(null);
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(TARGETS_KEY);
-      window.localStorage.removeItem(LOCATIONS_KEY);
-      window.localStorage.removeItem(SETUPS_KEY);
+    void clearAllData().catch(() => {});
+    if (appState) {
+      void appState.clearPersistedAppState().catch(() => {});
     }
   }
 
@@ -300,6 +346,11 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
         deleteSetup,
         findTargetByCoordinates,
         findShootingLocationByGeometryKey,
+        savedAlignments,
+        addSavedAlignment,
+        updateSavedAlignment,
+        deleteSavedAlignment,
+        findSavedAlignmentByDedupeKey,
         boundTargetId,
         boundShootingLocationId,
         bindTarget: setBoundTargetId,

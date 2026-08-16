@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { SavedLocationsProvider } from '../../lib/saved/savedState';
+import type { SavedSetup, SavedShootingLocation, SavedTarget } from '../../lib/saved/types';
+import { saveSetup, saveShootingLocation, saveTarget } from '../../lib/storage/repository';
+import { AppStateProvider, useAppState } from '../../lib/storage/appState';
 import SavedLocationsPage from '../SavedLocationsPage';
 
 vi.mock('../SavedLocationMap', () => ({
@@ -22,10 +26,6 @@ vi.mock('../SavedLocationMap', () => ({
     />
   )
 }));
-
-const TARGETS_KEY = 'astroalign.saved.targets';
-const LOCATIONS_KEY = 'astroalign.saved.locations';
-const SETUPS_KEY = 'astroalign.saved.setups';
 
 const target = {
   id: 'target-1',
@@ -60,32 +60,38 @@ const setup = {
   updatedAt: '2027-08-03T00:00:00.000Z'
 };
 
-function seedLocalStorage() {
-  window.localStorage.setItem(TARGETS_KEY, JSON.stringify({ version: 1, items: [target] }));
-  window.localStorage.setItem(LOCATIONS_KEY, JSON.stringify({ version: 1, items: [location] }));
-  window.localStorage.setItem(SETUPS_KEY, JSON.stringify({ version: 1, items: [setup] }));
+async function seedDatabase() {
+  await saveTarget(target as SavedTarget);
+  await saveShootingLocation(location as SavedShootingLocation);
+  await saveSetup(setup as SavedSetup);
+}
+
+function HydratedHarness({ children }: { children: ReactNode }) {
+  const { isHydrated } = useAppState();
+  if (!isHydrated) {
+    return null;
+  }
+  return <SavedLocationsProvider>{children}</SavedLocationsProvider>;
 }
 
 function renderPage() {
   const onOpenTarget = vi.fn();
   const onOpenSetup = vi.fn();
   const result = render(
-    <SavedLocationsProvider>
-      <SavedLocationsPage onOpenTarget={onOpenTarget} onOpenSetup={onOpenSetup} />
-    </SavedLocationsProvider>
+    <AppStateProvider>
+      <HydratedHarness>
+        <SavedLocationsPage onOpenTarget={onOpenTarget} onOpenSetup={onOpenSetup} />
+      </HydratedHarness>
+    </AppStateProvider>
   );
   return { onOpenTarget, onOpenSetup, ...result };
 }
 
 describe('SavedLocationsPage', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
   it('shows empty states when nothing is saved', async () => {
     renderPage();
 
-    expect(screen.getByTestId('saved-locations-page')).toBeTruthy();
+    expect(await screen.findByTestId('saved-locations-page')).toBeTruthy();
     expect(screen.getByTestId('saved-filter-all').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText(/Nothing saved yet/i)).toBeTruthy();
     expect(screen.getByText(/No saved targets yet/i)).toBeTruthy();
@@ -94,7 +100,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('renders seeded targets, locations, and setups as cards', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     await waitFor(() => {
@@ -108,7 +114,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('filters the card lists', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     await waitFor(() => {
@@ -130,7 +136,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('edits a target and persists the change', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     const card = await screen.findByTestId('saved-target-card-target-1');
@@ -148,7 +154,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('rejects editing a target with invalid coordinates', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     const card = await screen.findByTestId('saved-target-card-target-1');
@@ -166,7 +172,7 @@ describe('SavedLocationsPage', () => {
 
   it('deletes a target after confirmation and cascades setups', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     const card = await screen.findByTestId('saved-target-card-target-1');
@@ -182,7 +188,7 @@ describe('SavedLocationsPage', () => {
 
   it('keeps items when deletion is cancelled', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     const card = await screen.findByTestId('saved-target-card-target-1');
@@ -193,7 +199,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('creates a setup from a location via Use with target', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     renderPage();
 
     const locationCard = await screen.findByTestId('saved-location-card-location-1');
@@ -212,7 +218,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('calls onOpenTarget from Find shooting opportunities', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     const { onOpenTarget } = renderPage();
 
     const card = await screen.findByTestId('saved-target-card-target-1');
@@ -223,7 +229,7 @@ describe('SavedLocationsPage', () => {
   });
 
   it('calls onOpenSetup from a setup Open action', async () => {
-    seedLocalStorage();
+    await seedDatabase();
     const { onOpenSetup } = renderPage();
 
     const card = await screen.findByTestId('saved-setup-card-setup-1');

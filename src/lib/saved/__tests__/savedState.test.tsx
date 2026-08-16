@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { SavedLocationsProvider, useSavedLocations } from '../savedState';
 import type { SavedShootingGeometry, SavedShootingLocation, SavedTarget } from '../types';
+import { AppStateProvider, useAppState } from '../../storage/appState';
+import { loadAllData } from '../../storage/repository';
+
+function HydratedHarness({ children }: { children: ReactNode }) {
+  const { isHydrated } = useAppState();
+  if (!isHydrated) {
+    return null;
+  }
+  return <SavedLocationsProvider>{children}</SavedLocationsProvider>;
+}
 
 function Probe() {
   const value = useSavedLocations();
@@ -69,10 +80,6 @@ const pointGeometry: SavedShootingGeometry = {
 };
 
 describe('SavedLocationsProvider', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
   it('starts empty and adds targets, locations, and setups', async () => {
     renderProbe();
 
@@ -89,21 +96,34 @@ describe('SavedLocationsProvider', () => {
     });
   });
 
-  it('persists saved items to localStorage and reloads them on a fresh provider', async () => {
-    const first = renderProbe();
-    fireEvent.click(screen.getByTestId('add-target'));
+  it('persists saved items to IndexedDB and reloads them on a fresh provider', async () => {
+    const first = render(
+      <AppStateProvider>
+        <HydratedHarness>
+          <Probe />
+        </HydratedHarness>
+      </AppStateProvider>
+    );
+    fireEvent.click(await screen.findByTestId('add-target'));
     await waitFor(() => {
       expect(screen.getAllByTestId(/^target-/)).toHaveLength(1);
     });
 
-    const stored = window.localStorage.getItem('astroalign.saved.targets');
-    expect(stored).toBeTruthy();
-    const parsed = JSON.parse(stored!) as { items: SavedTarget[] };
-    expect(parsed.items[0].name).toBe('Tower A');
+    await waitFor(async () => {
+      const data = await loadAllData();
+      expect(data.targets).toHaveLength(1);
+      expect(data.targets[0].name).toBe('Tower A');
+    });
 
     first.unmount();
 
-    renderProbe();
+    render(
+      <AppStateProvider>
+        <HydratedHarness>
+          <Probe />
+        </HydratedHarness>
+      </AppStateProvider>
+    );
     await waitFor(() => {
       expect(screen.getAllByTestId(/^target-/)).toHaveLength(1);
       expect(screen.getByTestId('target-Tower A')).toBeTruthy();
@@ -250,7 +270,7 @@ describe('SavedLocationsProvider', () => {
     });
   });
 
-  it('resetAll clears in-memory state and localStorage', async () => {
+  it('resetAll clears in-memory state and the database', async () => {
     function ResetProbe() {
       const value = useSavedLocations();
       return (
@@ -262,20 +282,104 @@ describe('SavedLocationsProvider', () => {
       );
     }
     render(
-      <SavedLocationsProvider>
-        <ResetProbe />
-      </SavedLocationsProvider>
+      <AppStateProvider>
+        <HydratedHarness>
+          <ResetProbe />
+        </HydratedHarness>
+      </AppStateProvider>
     );
-    fireEvent.click(screen.getByTestId('add'));
+    fireEvent.click(await screen.findByTestId('add'));
+    await waitFor(async () => {
+      const data = await loadAllData();
+      expect(data.targets).toHaveLength(1);
+    });
     await waitFor(() => {
       expect(screen.getByTestId('t-X')).toBeTruthy();
     });
     fireEvent.click(screen.getByTestId('reset'));
     await waitFor(() => {
       expect(screen.queryByTestId('t-X')).toBeNull();
-      const stored = window.localStorage.getItem('astroalign.saved.targets');
-      expect(stored).toBeTruthy();
-      expect(JSON.parse(stored ?? '{}')).toEqual({ version: 1, items: [] });
+    });
+    await waitFor(async () => {
+      const data = await loadAllData();
+      expect(data.targets).toHaveLength(0);
+    });
+  });
+
+  it('adds saved alignments, updates duplicates by dedupe key, and deletes them', async () => {
+    function AlignmentProbe() {
+      const value = useSavedLocations();
+      return (
+        <div>
+          <button
+            onClick={() =>
+              value.addSavedAlignment({
+                source: 'finder',
+                object: 'Sun',
+                event: 'rise',
+                date: '2027-08-01',
+                time: '07:00:00',
+                celestialAzimuth: 90,
+                targetBearing: 89.5,
+                alignmentError: 0.5,
+                targetId: null,
+                shootingSetupId: null,
+                observerSnapshot: null,
+                targetSnapshot: null,
+                shootingPositionSnapshot: null,
+                shootingLocationSnapshot: null
+              })
+            }
+            data-testid="save-alignment"
+          />
+          <button
+            onClick={() =>
+              value.addSavedAlignment({
+                source: 'finder',
+                object: 'Sun',
+                event: 'rise',
+                date: '2027-08-01',
+                time: '07:00:00',
+                celestialAzimuth: 90,
+                targetBearing: 90,
+                alignmentError: 0,
+                targetId: null,
+                shootingSetupId: null,
+                observerSnapshot: null,
+                targetSnapshot: null,
+                shootingPositionSnapshot: null,
+                shootingLocationSnapshot: null
+              })
+            }
+            data-testid="save-alignment-again"
+          />
+          <button onClick={() => value.deleteSavedAlignment(value.savedAlignments[0]?.id ?? '')} data-testid="delete-alignment" />
+          <span data-testid="count">{value.savedAlignments.length}</span>
+          <span data-testid="first-error">{value.savedAlignments[0]?.alignmentError ?? 'none'}</span>
+        </div>
+      );
+    }
+    render(
+      <SavedLocationsProvider>
+        <AlignmentProbe />
+      </SavedLocationsProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('save-alignment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('count').textContent).toBe('1');
+      expect(screen.getByTestId('first-error').textContent).toBe('0.5');
+    });
+
+    fireEvent.click(screen.getByTestId('save-alignment-again'));
+    await waitFor(() => {
+      expect(screen.getByTestId('count').textContent).toBe('1');
+      expect(screen.getByTestId('first-error').textContent).toBe('0');
+    });
+
+    fireEvent.click(screen.getByTestId('delete-alignment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('count').textContent).toBe('0');
     });
   });
 });

@@ -7,6 +7,7 @@ import type { AstroObject, GeographicPoint } from '../../types/astronomy';
 import type { TimeFilterOption } from '../alignment/timeFilter';
 import type { ShootingArea, ShootingOpportunity } from './types';
 import { MOON_PHASE_BUCKETS } from '../astronomy/lunarPhase';
+import { usePersistedState } from '../storage/appState';
 
 export interface SearchedInputs {
   target: GeographicPoint;
@@ -74,18 +75,21 @@ interface ShootingStateValue {
 const ShootingStateContext = createContext<ShootingStateValue | null>(null);
 
 export function ShootingStateProvider({ children }: { children: ReactNode }) {
-  const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
-  const [eventType, setEventType] = useState<'rise' | 'set'>('rise');
-  const [startDate, setStartDate] = useState<string | null>(null);
-  const [endDate, setEndDate] = useState<string | null>(null);
-  const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
-  const [area, setArea] = useState<ShootingArea | null>(null);
-  const [areaTouched, setAreaTouched] = useState(false);
-  const [fullMoonOnly, setFullMoonOnly] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<TimeFilterOption>('any');
-  const [customStartTime, setCustomStartTime] = useState('18:00');
-  const [customEndTime, setCustomEndTime] = useState('07:00');
-  const [selectedMoonPhases, setSelectedMoonPhases] = useState<string[]>(ALL_MOON_PHASES);
+  const [object, setObject] = usePersistedState<AstroObject>('shooting.object', ASTRO_OBJECT.Sun);
+  const [eventType, setEventType] = usePersistedState<'rise' | 'set'>('shooting.eventType', 'rise');
+  const [startDate, setStartDate] = usePersistedState<string | null>('shooting.startDate', null);
+  const [endDate, setEndDate] = usePersistedState<string | null>('shooting.endDate', null);
+  const [toleranceDegrees, setToleranceDegrees] = usePersistedState('shooting.toleranceDegrees', 0.5);
+  const [area, setArea] = usePersistedState<ShootingArea | null>('shooting.area', null);
+  const [areaTouched, setAreaTouched] = usePersistedState('shooting.areaTouched', false);
+  const [fullMoonOnly, setFullMoonOnly] = usePersistedState('shooting.fullMoonOnly', false);
+  const [timeFilter, setTimeFilter] = usePersistedState<TimeFilterOption>('shooting.timeFilter', 'any');
+  const [customStartTime, setCustomStartTime] = usePersistedState('shooting.customStartTime', '18:00');
+  const [customEndTime, setCustomEndTime] = usePersistedState('shooting.customEndTime', '07:00');
+  const [selectedMoonPhases, setSelectedMoonPhases] = usePersistedState<string[]>(
+    'shooting.selectedMoonPhases',
+    ALL_MOON_PHASES
+  );
   const [allOpportunities, setAllOpportunities] = useState<ShootingOpportunity[] | null>(null);
   const [status, setStatus] = useState<ShootingStatus>('idle');
   const [progress, setProgress] = useState(0);

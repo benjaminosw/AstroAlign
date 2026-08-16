@@ -16,6 +16,9 @@ import LocationControls from './LocationControls';
 import TolerancePicker from './TolerancePicker';
 import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
+import SaveAlignmentControl from './SaveAlignmentControl';
+import { useSavedLocations } from '../lib/saved/savedState';
+import { usePersistedState } from '../lib/storage/appState';
 import type { TimeFilterOption } from '../lib/alignment/timeFilter';
 
 const WorkspaceMap = dynamic(() => import('./WorkspaceMap'), {
@@ -73,16 +76,19 @@ export default function AlignmentFinder({
   onClearLandmark = () => {},
   onGoToSavedLocations = () => {}
 }: AlignmentFinderProps) {
-  const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
-  const [startDate, setStartDate] = useState<string | null>(null);
-  const [endDate, setEndDate] = useState<string | null>(null);
-  const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
+  const [object, setObject] = usePersistedState<AstroObject>('find.object', ASTRO_OBJECT.Sun);
+  const [startDate, setStartDate] = usePersistedState<string | null>('find.startDate', null);
+  const [endDate, setEndDate] = usePersistedState<string | null>('find.endDate', null);
+  const [toleranceDegrees, setToleranceDegrees] = usePersistedState('find.toleranceDegrees', 0.5);
   const [activeMarker, setActiveMarker] = useState<'observer' | 'target'>('observer');
-  const [fullMoonOnly, setFullMoonOnly] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<TimeFilterOption>('any');
-  const [customStartTime, setCustomStartTime] = useState('18:00');
-  const [customEndTime, setCustomEndTime] = useState('07:00');
-  const [selectedMoonPhases, setSelectedMoonPhases] = useState<string[]>(ALL_MOON_PHASES);
+  const [fullMoonOnly, setFullMoonOnly] = usePersistedState('find.fullMoonOnly', false);
+  const [timeFilter, setTimeFilter] = usePersistedState<TimeFilterOption>('find.timeFilter', 'any');
+  const [customStartTime, setCustomStartTime] = usePersistedState('find.customStartTime', '18:00');
+  const [customEndTime, setCustomEndTime] = usePersistedState('find.customEndTime', '07:00');
+  const [selectedMoonPhases, setSelectedMoonPhases] = usePersistedState<string[]>(
+    'find.selectedMoonPhases',
+    ALL_MOON_PHASES
+  );
   const [allAlignmentResults, setAllAlignmentResults] = useState<AlignmentCandidate[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'running' | 'completed'>('idle');
   const [progress, setProgress] = useState(0);
@@ -93,6 +99,10 @@ export default function AlignmentFinder({
   const [fitLocation, setFitLocation] = useState<'observer' | 'target'>('target');
   const [locationInputError, setLocationInputError] = useState(false);
   const abortController = useRef<AbortController | null>(null);
+
+  const { findTargetByCoordinates, boundTargetId } = useSavedLocations();
+  const savedTargetForCurrent = findTargetByCoordinates(target.latitude, target.longitude);
+  const alignmentTargetId = savedTargetForCurrent?.id ?? boundTargetId ?? null;
 
   useEffect(() => {
     if (startDate !== null && endDate !== null) {
@@ -108,7 +118,7 @@ export default function AlignmentFinder({
     if (endDate === null) {
       setEndDate(now.date);
     }
-  }, [timeZone, startDate, endDate]);
+  }, [timeZone, startDate, endDate, setStartDate, setEndDate]);
 
   const currentInputs: SearchedInputs = {
     observer,
@@ -541,6 +551,44 @@ export default function AlignmentFinder({
               </p>
             )}
           </div>
+
+          {selectedCandidate && lastSearchedInputs && (
+            <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-300">
+                  <p className="font-semibold text-white">
+                    {selectedCandidate.eventLabel} · {formatResultDate(selectedCandidate.localDate)} ·{' '}
+                    {selectedCandidate.localTime}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Azimuth {selectedCandidate.object.azimuth.toFixed(2)}° · Bearing{' '}
+                    {selectedCandidate.target.bearing.toFixed(2)}° · Δ{' '}
+                    {selectedCandidate.score.toFixed(2)}°
+                    {selectedCandidate.moonPhase ? ` · ${selectedCandidate.moonPhase.name}` : ''}
+                  </p>
+                </div>
+                <div className="w-full sm:w-48">
+                  <SaveAlignmentControl
+                    source="finder"
+                    object={lastSearchedInputs.object}
+                    event={selectedCandidate.eventType}
+                    date={selectedCandidate.localDate}
+                    time={selectedCandidate.localTime}
+                    timeZone={selectedCandidate.timeZone}
+                    celestialAzimuth={selectedCandidate.object.azimuth}
+                    targetBearing={selectedCandidate.target.bearing}
+                    alignmentError={selectedCandidate.score}
+                    toleranceDegrees={lastSearchedInputs.toleranceDegrees}
+                    withinTolerance={selectedCandidate.alignment.withinTolerance}
+                    moonPhase={selectedCandidate.moonPhase ?? null}
+                    targetId={alignmentTargetId}
+                    observer={observer}
+                    target={target}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {status === 'running' && (
             <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/80 p-4 text-sm text-slate-200">

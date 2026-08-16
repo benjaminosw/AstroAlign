@@ -1,5 +1,7 @@
 import type { SelectedLandmark } from '../geocoding/types';
 import type { ShootingArea, ShootingAreaPoint } from '../opportunities/types';
+import type { AstroObject } from '../../types/astronomy';
+import type { MoonPhaseInfo } from '../astronomy/lunarPhase';
 
 export interface SavedPoint {
   id: string;
@@ -42,7 +44,87 @@ export interface SavedSetup {
   updatedAt: string;
 }
 
-export type SavedEntityKind = 'target' | 'shootingLocation' | 'setup';
+export type SavedAlignmentSource = 'calculator' | 'finder' | 'shooting';
+
+export interface SavedAlignmentSnapshotPoint {
+  latitude: number;
+  longitude: number;
+  elevation?: number | null;
+  name?: string | null;
+}
+
+export interface SavedAlignmentShootingPositionSnapshot {
+  latitude: number;
+  longitude: number;
+  bearingToTarget: number;
+  alignmentError: number;
+  distanceFromStartKm?: number | null;
+  zoneStartKm?: number | null;
+  zoneEndKm?: number | null;
+  source?: string;
+  pointName?: string | null;
+}
+
+export interface SavedAlignmentShootingLocationSnapshot {
+  name?: string | null;
+  geometry?: SavedShootingGeometry;
+}
+
+/**
+ * A saved alignment is a permanent, historical calculated event. It keeps
+ * references to related saved entities where applicable, but also stores a
+ * snapshot of the values that were calculated, so it remains meaningful even
+ * if the original Target or Shooting Setup is later edited or deleted.
+ */
+export interface SavedAlignment {
+  id: string;
+  name: string;
+  /** Stable key used to avoid saving the same event twice. */
+  dedupeKey: string;
+  targetId?: string | null;
+  shootingSetupId?: string | null;
+  source: SavedAlignmentSource;
+  object: AstroObject;
+  event: 'rise' | 'set' | null;
+  date: string;
+  time: string;
+  timeZone?: string | null;
+  celestialAzimuth: number;
+  targetBearing: number;
+  alignmentError: number;
+  toleranceDegrees?: number | null;
+  withinTolerance?: boolean | null;
+  moonPhase?: MoonPhaseInfo | null;
+  observerSnapshot?: SavedAlignmentSnapshotPoint | null;
+  targetSnapshot?: SavedAlignmentSnapshotPoint | null;
+  shootingPositionSnapshot?: SavedAlignmentShootingPositionSnapshot | null;
+  shootingLocationSnapshot?: SavedAlignmentShootingLocationSnapshot | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveAlignmentInput {
+  targetId?: string | null;
+  shootingSetupId?: string | null;
+  source: SavedAlignmentSource;
+  object: AstroObject;
+  event: 'rise' | 'set' | null;
+  date: string;
+  time: string;
+  timeZone?: string | null;
+  celestialAzimuth: number;
+  targetBearing: number;
+  alignmentError: number;
+  toleranceDegrees?: number | null;
+  withinTolerance?: boolean | null;
+  moonPhase?: MoonPhaseInfo | null;
+  observerSnapshot?: SavedAlignmentSnapshotPoint | null;
+  targetSnapshot?: SavedAlignmentSnapshotPoint | null;
+  shootingPositionSnapshot?: SavedAlignmentShootingPositionSnapshot | null;
+  shootingLocationSnapshot?: SavedAlignmentShootingLocationSnapshot | null;
+}
+
+export type SavedEntityKind = 'target' | 'shootingLocation' | 'setup' | 'alignment';
 
 const COORDINATE_PRECISION = 6;
 
@@ -163,4 +245,38 @@ export function geometrySummary(geometry: SavedShootingGeometry): string {
     )}`;
   }
   return `${geometry.points.length} points`;
+}
+
+export function savedAlignmentEventLabel(input: { object: AstroObject; event: 'rise' | 'set' | null }): string {
+  if (input.event === null) {
+    return input.object;
+  }
+  return `${input.object}${input.event === 'rise' ? 'rise' : 'set'}`;
+}
+
+function formatShortDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+export function generatedAlignmentName(input: {
+  object: AstroObject;
+  event: 'rise' | 'set' | null;
+  date: string;
+  time: string;
+  alignmentError: number;
+}): string {
+  const eventPart = savedAlignmentEventLabel(input);
+  return `${eventPart} · ${formatShortDate(input.date)} · ${input.time} · ${input.alignmentError.toFixed(2)}°`;
+}
+
+export function savedAlignmentDedupeKey(input: {
+  source: SavedAlignmentSource;
+  object: AstroObject;
+  event: 'rise' | 'set' | null;
+  date: string;
+  time: string;
+  celestialAzimuth: number;
+}): string {
+  return `${input.source}|${input.object}|${input.event ?? 'none'}|${input.date}|${input.time}|${input.celestialAzimuth.toFixed(3)}`;
 }

@@ -15,6 +15,9 @@ import LocationControls from './LocationControls';
 import TimePicker from './TimePicker';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
+import SaveAlignmentControl from './SaveAlignmentControl';
+import { useSavedLocations } from '../lib/saved/savedState';
+import { usePersistedState } from '../lib/storage/appState';
 
 const AUTO_CALC_DEBOUNCE_MS = 200;
 
@@ -120,11 +123,11 @@ export default function AlignmentCalculator({
   onClearLandmark = () => {},
   onGoToSavedLocations = () => {}
 }: AlignmentCalculatorProps) {
-  const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
-  const [date, setDate] = useState<string | null>(null);
-  const [time, setTime] = useState<string | null>(null);
-  const [riseSetMode, setRiseSetMode] = useState<'rise' | 'set'>('rise');
-  const [toleranceDegrees, setToleranceDegrees] = useState(0.5);
+  const [object, setObject] = usePersistedState<AstroObject>('calculate.object', ASTRO_OBJECT.Sun);
+  const [date, setDate] = usePersistedState<string | null>('calculate.date', null);
+  const [time, setTime] = usePersistedState<string | null>('calculate.time', null);
+  const [riseSetMode, setRiseSetMode] = usePersistedState<'rise' | 'set'>('calculate.riseSetMode', 'rise');
+  const [toleranceDegrees, setToleranceDegrees] = usePersistedState('calculate.toleranceDegrees', 0.5);
   const [activeMarker, setActiveMarker] = useState<'observer' | 'target'>('observer');
   const [snapshot, setSnapshot] = useState<ResultSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +140,10 @@ export default function AlignmentCalculator({
   const [sunAzimuth, setSunAzimuth] = useState<number | null>(null);
   const autoCalcTimerRef = useRef<number | null>(null);
   const autoCalcVersionRef = useRef(0);
+
+  const { findTargetByCoordinates, boundTargetId } = useSavedLocations();
+  const savedTargetForCurrent = findTargetByCoordinates(target.latitude, target.longitude);
+  const alignmentTargetId = savedTargetForCurrent?.id ?? boundTargetId ?? null;
 
   useEffect(() => {
     if (date !== null && time !== null) {
@@ -152,7 +159,7 @@ export default function AlignmentCalculator({
     if (time === null) {
       setTime(now.time);
     }
-  }, [timeZone, date, time]);
+  }, [timeZone, date, time, setDate, setTime]);
 
   useEffect(() => {
     if (locationInputError || observerCoordinateError) {
@@ -574,6 +581,25 @@ export default function AlignmentCalculator({
                     {snapshot.result.alignment.angularSeparation.toFixed(2)}°
                   </p>
                 </div>
+              </div>
+
+              <div className="w-full sm:max-w-56">
+                <SaveAlignmentControl
+                  source="calculator"
+                  object={snapshot.object}
+                  event={null}
+                  date={snapshot.date}
+                  time={snapshot.time}
+                  timeZone={timeZone}
+                  celestialAzimuth={snapshot.result.object.azimuth}
+                  targetBearing={snapshot.result.target.bearing}
+                  alignmentError={snapshot.result.alignment.angularSeparation}
+                  toleranceDegrees={snapshot.toleranceDegrees}
+                  withinTolerance={snapshot.result.alignment.withinTolerance}
+                  targetId={alignmentTargetId}
+                  observer={observer}
+                  target={target}
+                />
               </div>
 
               <details data-testid="alignment-details" className="rounded-2xl border border-slate-800 bg-slate-900/50">

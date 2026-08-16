@@ -10,12 +10,14 @@ import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
 import FindShootingOpportunities from './FindShootingOpportunities';
 import SavedLocationsPage from './SavedLocationsPage';
+import SavedAlignmentsPage from './SavedAlignmentsPage';
 import { ShootingStateProvider, useShootingState } from '../lib/opportunities/shootingState';
 import { SavedLocationsProvider, useSavedLocations } from '../lib/saved/savedState';
+import { AppStateProvider, useAppState, usePersistedState } from '../lib/storage/appState';
 import type { SavedSetup, SavedTarget } from '../lib/saved/types';
 import { geometryToShootingArea, targetToLandmark } from '../lib/saved/types';
 
-type TabId = 'calculate' | 'find' | 'shooting' | 'saved';
+type TabId = 'calculate' | 'find' | 'shooting' | 'saved' | 'alignments';
 
 const TABS: Array<{ id: TabId; label: string; description: string }> = [
   {
@@ -37,15 +39,26 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
     id: 'saved',
     label: 'Saved locations',
     description: 'Manage saved targets, shooting locations, and setups — preserved between sessions.'
+  },
+  {
+    id: 'alignments',
+    label: 'Saved alignments',
+    description: 'Review alignments you have calculated or found and saved — preserved between sessions.'
   }
 ];
 
 function AlignmentAppContent() {
-  const [activeTab, setActiveTab] = useState<TabId>('calculate');
-  const [observer, setObserver] = useState<GeographicPoint>(DEFAULT_OBSERVER);
-  const [target, setTarget] = useState<GeographicPoint>(DEFAULT_TARGET);
-  const [observerLandmark, setObserverLandmark] = useState<SelectedLandmark | null>(null);
-  const [targetLandmark, setTargetLandmark] = useState<SelectedLandmark | null>(null);
+  const [activeTab, setActiveTab] = usePersistedState<TabId>('app.activeTab', 'calculate');
+  const [observer, setObserver] = usePersistedState<GeographicPoint>('app.observer', DEFAULT_OBSERVER);
+  const [target, setTarget] = usePersistedState<GeographicPoint>('app.target', DEFAULT_TARGET);
+  const [observerLandmark, setObserverLandmark] = usePersistedState<SelectedLandmark | null>(
+    'app.observerLandmark',
+    null
+  );
+  const [targetLandmark, setTargetLandmark] = usePersistedState<SelectedLandmark | null>(
+    'app.targetLandmark',
+    null
+  );
   const [timeZone, setTimeZone] = useState<string | null>(null);
   const [timeZoneStatus, setTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [targetTimeZone, setTargetTimeZone] = useState<string | null>(null);
@@ -221,15 +234,43 @@ function AlignmentAppContent() {
       {activeTab === 'saved' && (
         <SavedLocationsPage onOpenTarget={handleOpenSavedTarget} onOpenSetup={handleOpenSavedSetup} />
       )}
+      {activeTab === 'alignments' && <SavedAlignmentsPage />}
+    </div>
+  );
+}
+
+function AppLoading() {
+  return (
+    <div className="grid min-h-[40vh] place-items-center">
+      <div className="text-sm text-slate-400">Loading your saved data…</div>
     </div>
   );
 }
 
 export default function AlignmentApp() {
   return (
+    <AppStateProvider>
+      <AppGate />
+    </AppStateProvider>
+  );
+}
+
+function AppGate() {
+  const { isHydrated, persistenceError } = useAppState();
+  if (!isHydrated) {
+    return <AppLoading />;
+  }
+  return (
     <ShootingStateProvider>
       <SavedLocationsProvider>
-        <AlignmentAppContent />
+        <div className="grid gap-8">
+          {persistenceError && (
+            <div className="rounded-2xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+              {persistenceError}
+            </div>
+          )}
+          <AlignmentAppContent />
+        </div>
       </SavedLocationsProvider>
     </ShootingStateProvider>
   );

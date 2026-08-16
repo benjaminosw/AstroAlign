@@ -1,8 +1,10 @@
 'use client';
 
-import type { AstroObject } from '../types/astronomy';
+import type { AstroObject, GeographicPoint } from '../types/astronomy';
 import type { ShootingOpportunity } from '../lib/opportunities/types';
 import { formatResultDate } from '../lib/utils/formatResultDate';
+import SaveAlignmentControl from './SaveAlignmentControl';
+import type { SavedAlignmentShootingLocationSnapshot } from '../lib/saved/types';
 
 interface ShootingOpportunityResultsProps {
   allResults: ShootingOpportunity[] | null;
@@ -13,6 +15,12 @@ interface ShootingOpportunityResultsProps {
   selectedId: string | null;
   onSelect: (_id: string) => void;
   onResetFilters: () => void;
+  selectedOpportunity?: ShootingOpportunity | null;
+  target?: GeographicPoint | null;
+  toleranceDegrees?: number;
+  targetId?: string | null;
+  shootingSetupId?: string | null;
+  shootingLocationSnapshot?: SavedAlignmentShootingLocationSnapshot | null;
 }
 
 function positionLabel(opportunity: ShootingOpportunity): string {
@@ -37,7 +45,13 @@ export default function ShootingOpportunityResults({
   isCurrent,
   selectedId,
   onSelect,
-  onResetFilters
+  onResetFilters,
+  selectedOpportunity = null,
+  target = null,
+  toleranceDegrees = 0,
+  targetId = null,
+  shootingSetupId = null,
+  shootingLocationSnapshot = null
 }: ShootingOpportunityResultsProps) {
   const totalCount = allResults?.length ?? 0;
   const shownCount = visibleResults.length;
@@ -59,6 +73,56 @@ export default function ShootingOpportunityResults({
         Geometric alignment only — not checked for accessibility, roads, obstructions, terrain, visibility or legal
         access.
       </p>
+
+      {selectedOpportunity && (
+        <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-slate-300">
+              <p className="font-semibold text-white">
+                {selectedOpportunity.eventLabel} · {formatResultDate(selectedOpportunity.localDate)} ·{' '}
+                {selectedOpportunity.localTime}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {positionLabel(selectedOpportunity)} · Bearing{' '}
+                {selectedOpportunity.position.bearingToTarget.toFixed(2)}° · Δ{' '}
+                {selectedOpportunity.position.alignmentError.toFixed(2)}°
+              </p>
+            </div>
+            <div className="w-full sm:w-48">
+              <SaveAlignmentControl
+                source="shooting"
+                object={selectedOpportunity.object}
+                event={selectedOpportunity.eventType}
+                date={selectedOpportunity.localDate}
+                time={selectedOpportunity.localTime}
+                timeZone={selectedOpportunity.timeZone}
+                celestialAzimuth={selectedOpportunity.objectAzimuth}
+                targetBearing={selectedOpportunity.position.bearingToTarget}
+                alignmentError={selectedOpportunity.position.alignmentError}
+                toleranceDegrees={toleranceDegrees}
+                withinTolerance={selectedOpportunity.position.alignmentError <= toleranceDegrees}
+                moonPhase={selectedOpportunity.moonPhase ?? null}
+                targetId={targetId}
+                shootingSetupId={shootingSetupId}
+                observer={null}
+                target={target}
+                shootingPosition={{
+                  latitude: selectedOpportunity.position.latitude,
+                  longitude: selectedOpportunity.position.longitude,
+                  bearingToTarget: selectedOpportunity.position.bearingToTarget,
+                  alignmentError: selectedOpportunity.position.alignmentError,
+                  distanceFromStartKm: selectedOpportunity.position.distanceFromStartKm,
+                  zoneStartKm: selectedOpportunity.position.zoneStartKm,
+                  zoneEndKm: selectedOpportunity.position.zoneEndKm,
+                  source: selectedOpportunity.position.source,
+                  pointName: selectedOpportunity.position.pointName ?? null
+                }}
+                shootingLocationSnapshot={shootingLocationSnapshot}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {allResults !== null && !isCurrent && (
         <div

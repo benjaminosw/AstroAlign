@@ -23,6 +23,7 @@ import SaveSetupControl from './SaveSetupControl';
 import TolerancePicker from './TolerancePicker';
 import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
+import { useSavedLocations } from '../lib/saved/savedState';
 
 const ShootingAreaMap = dynamic(() => import('./ShootingAreaMap'), {
   ssr: false,
@@ -348,6 +349,18 @@ export default function FindShootingOpportunities({
   const selectedOpportunity =
     visibleOpportunities.find((opportunity) => opportunity.id === selectedId) ?? visibleOpportunities[0] ?? null;
 
+  const { findTargetByCoordinates, boundTargetId, boundShootingLocationId, shootingLocations, setups } =
+    useSavedLocations();
+  const shootingTargetId = findTargetByCoordinates(target.latitude, target.longitude)?.id ?? boundTargetId ?? null;
+  const boundLocation =
+    (boundShootingLocationId && shootingLocations.find((location) => location.id === boundShootingLocationId)) ?? null;
+  const boundSetup =
+    shootingTargetId && boundShootingLocationId
+      ? (setups.find(
+          (setup) => setup.targetId === shootingTargetId && setup.shootingLocationId === boundShootingLocationId
+        ) ?? null)
+      : null;
+
   const highlight = selectedOpportunity
     ? {
         zoneStartKm: selectedOpportunity.position.zoneStartKm,
@@ -637,6 +650,14 @@ export default function FindShootingOpportunities({
           selectedId={selectedId}
           onSelect={handleSelectFromList}
           onResetFilters={resetFilters}
+          selectedOpportunity={selectedOpportunity}
+          target={target}
+          toleranceDegrees={toleranceDegrees}
+          targetId={shootingTargetId}
+          shootingSetupId={boundSetup?.id ?? null}
+          shootingLocationSnapshot={
+            boundLocation ? { name: boundLocation.name, geometry: boundLocation.geometry } : null
+          }
         />
       </div>
     </div>

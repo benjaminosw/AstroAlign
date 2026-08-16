@@ -14,6 +14,7 @@ import { validateCoordinates } from '../lib/timezone/validateCoordinates';
 import SavedTargetCard from './SavedTargetCard';
 import SavedLocationCard from './SavedLocationCard';
 import SavedSetupCard from './SavedSetupCard';
+import DataManagement from './DataManagement';
 
 const SavedLocationMap = dynamic(() => import('./SavedLocationMap'), {
   ssr: false,
@@ -648,6 +649,8 @@ export default function SavedLocationsPage({ onOpenTarget, onOpenSetup }: SavedL
             they will appear here — even after a refresh.
           </p>
         )}
+
+        <DataManagement />
       </div>
 
       <div className="lg:sticky lg:top-8">
