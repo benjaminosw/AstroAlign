@@ -45,9 +45,14 @@ export default function SaveShootingLocationControl({ area }: SaveShootingLocati
     bindShootingLocation(created.id);
   }
 
+  function handleSaveAsNew() {
+    const created = addShootingLocation({ name: generatedLocationName(geometry), geometry });
+    bindShootingLocation(created.id);
+  }
+
   if (dirty) {
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
           onClick={handleSave}
@@ -56,9 +61,14 @@ export default function SaveShootingLocationControl({ area }: SaveShootingLocati
         >
           Save changes
         </button>
-        <p data-testid="saved-location-dirty" className="text-xs text-amber-300">
-          Unsaved changes to saved shooting location
-        </p>
+        <button
+          type="button"
+          onClick={handleSaveAsNew}
+          data-testid="save-shooting-location-as-new"
+          className={`${buttonClass} border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-500 hover:text-white`}
+        >
+          Save as new location
+        </button>
       </div>
     );
   }

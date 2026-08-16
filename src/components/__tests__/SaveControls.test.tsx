@@ -94,7 +94,39 @@ describe('SaveTargetControl', () => {
     fireEvent.click(screen.getByTestId('seed-bound'));
     await waitFor(() => {
       expect(screen.getByTestId('save-target-changes')).toBeTruthy();
-      expect(screen.getByTestId('saved-target-dirty')).toBeTruthy();
+      expect(screen.getByTestId('save-target-as-new')).toBeTruthy();
+      expect(screen.queryByTestId('save-target-button')).toBeNull();
+    });
+  });
+
+  it('saves as a new target instead of updating when Save as new target is clicked', async () => {
+    function BoundTarget() {
+      const { addTarget, bindTarget } = useSavedLocations();
+      return (
+        <button
+          data-testid="seed-bound"
+          onClick={() => {
+            const created = addTarget({ name: 'Bound', latitude: 0.5, longitude: 100.0 });
+            bindTarget(created.id);
+          }}
+        />
+      );
+    }
+    wrapper(
+      <>
+        <BoundTarget />
+        <SaveTargetControl target={target} landmarkName={null} />
+      </>
+    );
+
+    fireEvent.click(screen.getByTestId('seed-bound'));
+    await waitFor(() => {
+      expect(screen.getByTestId('save-target-as-new')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId('save-target-as-new'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-target-button').textContent).toMatch(/Target 1\.310000,103\.880000/);
     });
   });
 });
@@ -177,7 +209,44 @@ describe('SaveShootingLocationControl', () => {
     fireEvent.click(screen.getByTestId('seed-bound'));
     await waitFor(() => {
       expect(screen.getByTestId('save-shooting-location-changes')).toBeTruthy();
-      expect(screen.getByTestId('saved-location-dirty')).toBeTruthy();
+      expect(screen.getByTestId('save-shooting-location-as-new')).toBeTruthy();
+    });
+  });
+
+  it('saves as a new shooting location when Save as new location is clicked', async () => {
+    function BoundLocation() {
+      const { addShootingLocation, bindShootingLocation } = useSavedLocations();
+      return (
+        <button
+          data-testid="seed-bound"
+          onClick={() => {
+            const created = addShootingLocation({
+              name: 'Bound',
+              geometry: {
+                type: 'points',
+                points: [{ id: 'x', name: 'X', latitude: 9, longitude: 9 }]
+              }
+            });
+            bindShootingLocation(created.id);
+          }}
+        />
+      );
+    }
+    wrapper(
+      <>
+        <BoundLocation />
+        <SaveShootingLocationControl area={pointsArea} />
+      </>
+    );
+
+    fireEvent.click(screen.getByTestId('seed-bound'));
+    await waitFor(() => {
+      expect(screen.getByTestId('save-shooting-location-as-new')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId('save-shooting-location-as-new'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-shooting-location-button').textContent).toMatch(/2 points/);
     });
   });
 });

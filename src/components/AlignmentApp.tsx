@@ -177,7 +177,8 @@ function AlignmentAppContent() {
     onSelectObserverLandmark: handleSelectObserverLandmark,
     onSelectLandmark: handleSelectLandmark,
     onClearObserverLandmark: handleClearObserverLandmark,
-    onClearLandmark: handleClearLandmark
+    onClearLandmark: handleClearLandmark,
+    onGoToSavedLocations: () => setActiveTab('saved')
   };
 
   return (

@@ -105,6 +105,29 @@ describe('LocationControls', () => {
     expect(screen.getByTestId('saved-target-button').textContent).toMatch(/Target 1\.315079,103\.892121/);
   });
 
+  it('renders observer save controls and saves the observer as a shooting location', async () => {
+    render(<Harness />);
+
+    expect(screen.getByTestId('save-shooting-location-button')).toBeTruthy();
+    expect(screen.getByTestId('save-setup-button')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('save-shooting-location-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-shooting-location-button').textContent).toMatch(/Single point/);
+    });
+  });
+
+  it('saves a setup combining the target and observer location', async () => {
+    render(<Harness />);
+
+    fireEvent.click(screen.getByTestId('save-setup-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-setup-button').textContent).toMatch(/Setup saved ✓/);
+    });
+  });
+
   it('renders the Location heading, plain-text coordinate panels, timezone chip, and both search bars', () => {
     render(<Harness />);
 

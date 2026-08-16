@@ -157,7 +157,7 @@ describe('FindShootingOpportunities workspace', () => {
     expect(screen.getByLabelText('Search until')).toBeTruthy();
     expect(screen.getByLabelText('Maximum azimuth difference')).toBeTruthy();
     expect(screen.getByText('Results will appear here after you search.')).toBeTruthy();
-    expect(screen.queryByText(/geometric alignment only/i)).toBeNull();
+    expect(screen.getByText(/geometric alignment only/i)).toBeTruthy();
     expect(screen.queryByText('Moon phase')).toBeNull();
     expect(screen.getByTestId('area-mode-path').getAttribute('aria-checked')).toBe('true');
     expect(screen.getByTestId('area-mode-points').getAttribute('aria-checked')).toBe('false');

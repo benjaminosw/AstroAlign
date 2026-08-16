@@ -42,6 +42,7 @@ interface AlignmentFinderProps {
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
   onClearObserverLandmark?: () => void;
   onClearLandmark?: () => void;
+  onGoToSavedLocations?: () => void;
 }
 
 type SearchedInputs = {
@@ -69,7 +70,8 @@ export default function AlignmentFinder({
   onSelectObserverLandmark = () => {},
   onSelectLandmark = () => {},
   onClearObserverLandmark = () => {},
-  onClearLandmark = () => {}
+  onClearLandmark = () => {},
+  onGoToSavedLocations = () => {}
 }: AlignmentFinderProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
   const [startDate, setStartDate] = useState<string | null>(null);
@@ -340,6 +342,7 @@ export default function AlignmentFinder({
         onClearObserverLandmark={onClearObserverLandmark}
         onClearLandmark={onClearLandmark}
         onInputErrorChange={setLocationInputError}
+        onGoToSavedLocations={onGoToSavedLocations}
       />
 
       <WorkspaceMap

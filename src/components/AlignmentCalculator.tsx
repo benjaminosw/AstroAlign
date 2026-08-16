@@ -83,6 +83,7 @@ interface AlignmentCalculatorProps {
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
   onClearObserverLandmark?: () => void;
   onClearLandmark?: () => void;
+  onGoToSavedLocations?: () => void;
 }
 
 interface ResultSnapshot {
@@ -116,7 +117,8 @@ export default function AlignmentCalculator({
   onSelectObserverLandmark = () => {},
   onSelectLandmark = () => {},
   onClearObserverLandmark = () => {},
-  onClearLandmark = () => {}
+  onClearLandmark = () => {},
+  onGoToSavedLocations = () => {}
 }: AlignmentCalculatorProps) {
   const [object, setObject] = useState<AstroObject>(ASTRO_OBJECT.Sun);
   const [date, setDate] = useState<string | null>(null);
@@ -391,6 +393,7 @@ export default function AlignmentCalculator({
         onClearObserverLandmark={onClearObserverLandmark}
         onClearLandmark={onClearLandmark}
         onInputErrorChange={setLocationInputError}
+        onGoToSavedLocations={onGoToSavedLocations}
       />
 
       <WorkspaceMap

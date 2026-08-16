@@ -55,15 +55,10 @@ export default function ShootingOpportunityResults({
         )}
       </div>
 
-      {allResults !== null && (
-        <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <p className="font-semibold">Geometric alignment only</p>
-          <p className="mt-1 text-amber-200/80">
-            Opportunities are checked for bearing alignment only. They have not been checked for accessibility, roads,
-            obstructions, terrain, visibility or legal access.
-          </p>
-        </div>
-      )}
+      <p data-testid="geometric-alignment-note" className="mt-3 text-xs leading-relaxed text-slate-500">
+        Geometric alignment only — not checked for accessibility, roads, obstructions, terrain, visibility or legal
+        access.
+      </p>
 
       {allResults !== null && !isCurrent && (
         <div

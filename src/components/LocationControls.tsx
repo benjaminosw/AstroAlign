@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { GeographicPoint } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
+import type { ShootingArea } from '../lib/opportunities/types';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { formatTimezoneLabel } from '../lib/timezone/formatTimezoneLabel';
 import LocationEditor from './LocationEditor';
 import LocationSearch from './LocationSearch';
 import SaveTargetControl from './SaveTargetControl';
+import SaveShootingLocationControl from './SaveShootingLocationControl';
+import SaveSetupControl from './SaveSetupControl';
 
 interface LocationControlsProps {
   observer: GeographicPoint;
@@ -23,6 +26,7 @@ interface LocationControlsProps {
   onClearObserverLandmark?: () => void;
   onClearLandmark?: () => void;
   onInputErrorChange?: (_hasError: boolean) => void;
+  onGoToSavedLocations?: () => void;
 }
 
 function noop() {}
@@ -77,12 +81,28 @@ export default function LocationControls({
   onSelectLandmark = noop,
   onClearObserverLandmark = noop,
   onClearLandmark = noop,
-  onInputErrorChange = noop
+  onInputErrorChange = noop,
+  onGoToSavedLocations = noop
 }: LocationControlsProps) {
   const [observerError, setObserverError] = useState(false);
   const [targetError, setTargetError] = useState(false);
 
   const hasInputError = observerError || targetError;
+
+  const observerArea = useMemo<ShootingArea>(
+    () => ({
+      type: 'points',
+      points: [
+        {
+          id: 'observer',
+          name: observerLandmark?.name ?? 'Observer',
+          latitude: observer.latitude,
+          longitude: observer.longitude
+        }
+      ]
+    }),
+    [observerLandmark, observer.latitude, observer.longitude]
+  );
 
   useEffect(() => {
     onInputErrorChange(hasInputError);
@@ -121,33 +141,44 @@ export default function LocationControls({
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <LocationEditor
-          idPrefix="observer"
-          title="Observer location"
-          icon="camera"
-          values={observer}
-          onChange={onObserverChange}
-          onErrorChange={setObserverError}
-          searchNode={
-            <LocationSearch
-              idPrefix="observer"
-              ariaLabel="Observer location"
-              placeholder="Search for an address, postal code or place..."
-              onSelect={onSelectObserverLandmark}
-            />
-          }
-          summaryNode={
-            observerLandmark ? (
-              <PlaceSummary
-                place={observerLandmark}
-                coordinatesAdjusted={observerCoordinatesAdjusted}
-                clearLabel="Clear observer landmark"
-                onClear={onClearObserverLandmark}
-                icon="📷"
+        <div className="min-w-0">
+          <LocationEditor
+            idPrefix="observer"
+            title="Observer location"
+            icon="camera"
+            values={observer}
+            onChange={onObserverChange}
+            onErrorChange={setObserverError}
+            searchNode={
+              <LocationSearch
+                idPrefix="observer"
+                ariaLabel="Observer location"
+                placeholder="Search for an address, postal code or place..."
+                onSelect={onSelectObserverLandmark}
               />
-            ) : null
-          }
-        />
+            }
+            summaryNode={
+              observerLandmark ? (
+                <PlaceSummary
+                  place={observerLandmark}
+                  coordinatesAdjusted={observerCoordinatesAdjusted}
+                  clearLabel="Clear observer landmark"
+                  onClear={onClearObserverLandmark}
+                  icon="📷"
+                />
+              ) : null
+            }
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <SaveShootingLocationControl area={observerArea} />
+            <SaveSetupControl
+              target={target}
+              landmarkName={landmark?.name ?? null}
+              area={observerArea}
+              onGoToSavedLocations={onGoToSavedLocations}
+            />
+          </div>
+        </div>
         <div className="min-w-0">
           <LocationEditor
             idPrefix="target"

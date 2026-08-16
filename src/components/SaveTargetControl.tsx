@@ -44,9 +44,18 @@ export default function SaveTargetControl({ target, landmarkName }: SaveTargetCo
     bindTarget(created.id);
   }
 
+  function handleSaveAsNew() {
+    const created = addTarget({
+      name: landmarkName ?? generatedTargetName(target),
+      latitude: target.latitude,
+      longitude: target.longitude
+    });
+    bindTarget(created.id);
+  }
+
   if (dirty) {
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
           onClick={handleSave}
@@ -55,9 +64,14 @@ export default function SaveTargetControl({ target, landmarkName }: SaveTargetCo
         >
           Save changes
         </button>
-        <p data-testid="saved-target-dirty" className="text-xs text-amber-300">
-          Unsaved changes to saved target
-        </p>
+        <button
+          type="button"
+          onClick={handleSaveAsNew}
+          data-testid="save-target-as-new"
+          className={`${buttonClass} border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-500 hover:text-white`}
+        >
+          Save as new target
+        </button>
       </div>
     );
   }
