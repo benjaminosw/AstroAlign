@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import FindShootingOpportunities from '../FindShootingOpportunities';
 import { ShootingStateProvider } from '../../lib/opportunities/shootingState';
 import { SavedLocationsProvider } from '../../lib/saved/savedState';
+import { CalendarProvider } from '../../lib/calendar/CalendarProvider';
 import { DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { ASTRO_OBJECT } from '../../types/astronomy';
 import type { ShootingOpportunity } from '../../lib/opportunities/types';
@@ -96,13 +97,15 @@ function Harness() {
   return (
     <ShootingStateProvider>
       <SavedLocationsProvider>
-        <FindShootingOpportunities
-          target={target}
-          targetCoordinateError={null}
-          timeZone="Asia/Singapore"
-          timeZoneStatus="idle"
-          onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-        />
+        <CalendarProvider>
+          <FindShootingOpportunities
+            target={target}
+            targetCoordinateError={null}
+            timeZone="Asia/Singapore"
+            timeZoneStatus="idle"
+            onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+          />
+        </CalendarProvider>
       </SavedLocationsProvider>
     </ShootingStateProvider>
   );

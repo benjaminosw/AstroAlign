@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { SavedLocationsProvider } from '../../lib/saved/savedState';
+import { CalendarProvider } from '../../lib/calendar/CalendarProvider';
 import type { SavedSetup, SavedShootingLocation, SavedTarget } from '../../lib/saved/types';
 import { saveSetup, saveShootingLocation, saveTarget } from '../../lib/storage/repository';
 import { AppStateProvider, useAppState } from '../../lib/storage/appState';
@@ -71,7 +72,11 @@ function HydratedHarness({ children }: { children: ReactNode }) {
   if (!isHydrated) {
     return null;
   }
-  return <SavedLocationsProvider>{children}</SavedLocationsProvider>;
+  return (
+    <CalendarProvider>
+      <SavedLocationsProvider>{children}</SavedLocationsProvider>
+    </CalendarProvider>
+  );
 }
 
 function renderPage() {

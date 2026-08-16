@@ -15,6 +15,8 @@ import {
 } from '../storage/repository';
 import { useOptionalAppState } from '../storage/appState';
 import type {
+  CalendarIntegrationEntry,
+  CalendarIntegrations,
   SavedAlignment,
   SavedPoint,
   SavedShootingLocation,
@@ -34,6 +36,15 @@ import {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function removeProvider(
+  integrations: CalendarIntegrations,
+  provider: 'google' | 'microsoft'
+): CalendarIntegrations {
+  const next: CalendarIntegrations = { ...integrations };
+  delete next[provider];
+  return next;
 }
 
 function createId(prefix: string): string {
@@ -83,6 +94,11 @@ export interface SavedLocationsValue {
   updateSavedAlignment: (_id: string, _patch: { name?: string }) => SavedAlignment;
   deleteSavedAlignment: (_id: string) => void;
   findSavedAlignmentByDedupeKey: (_key: string) => SavedAlignment | null;
+  setSavedAlignmentCalendarIntegration: (
+    _id: string,
+    _provider: 'google' | 'microsoft',
+    _entry: CalendarIntegrationEntry | null
+  ) => void;
   boundTargetId: string | null;
   boundShootingLocationId: string | null;
   bindTarget: (_id: string | null) => void;
@@ -312,6 +328,25 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
     void deleteSavedAlignmentRecord(id).catch(() => {});
   }
 
+  function setSavedAlignmentCalendarIntegration(
+    id: string,
+    provider: 'google' | 'microsoft',
+    entry: CalendarIntegrationEntry | null
+  ) {
+    const existing = savedAlignments.find((alignment) => alignment.id === id);
+    if (!existing) {
+      return;
+    }
+    const current = existing.calendarIntegrations ?? {};
+    const next: CalendarIntegrations = entry === null ? removeProvider(current, provider) : { ...current, [provider]: entry };
+    const updated: SavedAlignment = {
+      ...existing,
+      calendarIntegrations: next
+    };
+    setSavedAlignments((prev) => prev.map((alignment) => (alignment.id === id ? updated : alignment)));
+    void saveSavedAlignment(updated).catch(() => {});
+  }
+
   function findSavedAlignmentByDedupeKey(key: string): SavedAlignment | null {
     return savedAlignments.find((alignment) => alignment.dedupeKey === key) ?? null;
   }
@@ -351,6 +386,7 @@ export function SavedLocationsProvider({ children }: { children: ReactNode }) {
         updateSavedAlignment,
         deleteSavedAlignment,
         findSavedAlignmentByDedupeKey,
+        setSavedAlignmentCalendarIntegration,
         boundTargetId,
         boundShootingLocationId,
         bindTarget: setBoundTargetId,

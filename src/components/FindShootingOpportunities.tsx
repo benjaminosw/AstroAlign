@@ -658,6 +658,7 @@ export default function FindShootingOpportunities({
           shootingLocationSnapshot={
             boundLocation ? { name: boundLocation.name, geometry: boundLocation.geometry } : null
           }
+          onGoToSettings={onGoToSavedLocations}
         />
       </div>
     </div>

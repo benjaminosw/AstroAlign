@@ -13,6 +13,8 @@ A local Next.js app for astronomical photography alignment planning.
   - **Find Shooting Locations** — reverse search: given a target, date, and Sun/Moon rise or set event, generate and rank camera locations whose line-of-sight bearing aligns with the event azimuth
 - MapLibre GL JS map showing the target, the ideal alignment corridor, and ranked shooting locations
 - Interactive workspace map on the Alignment Calculator and Find Alignments modes: a camera icon for the observer and a pin for the target (draggable SVG markers anchored at their geographic tip, with the active one highlighted), the observer→target bearing line, a live Sun/Moon direction ray and marker, a tolerance sector, an alignment status overlay, and an explicit "Recentre" button. The viewport is controlled by the user — dragging markers or recalculating never moves the map.
+- Saved alignments from every mode, persisted in the browser (IndexedDB), with rename, All/Upcoming/Past filtering, and deletion (optionally removing the external calendar event too)
+- Real calendar integration: server-side OAuth with Google Calendar and Microsoft 365 (Graph), per-alignment add/update/remove/status, .ics export as a no-account fallback, and bulk "Save all" / "Add all to calendar" actions
 - Independent geocoding search for both the Observer and Target locations (OpenStreetMap Nominatim) alongside click-to-select map targeting
 - Geographic calculations for great-circle distance, bearing, geodesic destination, and target altitude
 - Timezone detection from coordinates with local date/time handling (tz-lookup + date-fns-tz)
@@ -30,6 +32,38 @@ Pick a Sun/Moon object, a target location, and a date range. The app searches fo
 
 ### Find Shooting Locations
 Set a target, date, and Sun or Moon rise/set event. The app computes the event azimuth at the target, derives the ideal corridor in the opposite direction (where a camera would look toward the target as the object rises/sets behind it), and samples candidate camera locations along that corridor within the search radius. Each candidate is scored by real bearing, distance, and alignment error, then ranked by error and distance. The map shows the target, corridor, and candidate points; clicking a candidate shows its details. Results are geometric only — terrain, roads, and line-of-sight obstructions are not considered.
+
+### Saved Alignments & Calendar Integration
+Every mode offers a **Save alignment** action; saved alignments appear in the Saved tab and survive refreshes. Once saved, an alignment can be pushed to an external calendar:
+
+- **Add to calendar** — creates a 5-minute event in the chosen calendar with the object/event label, target name, coordinates, tolerance, and (when available) the shooting position, moon phase, and a reminder. Adding to Google reuses a deterministic event id so repeated attempts can never create duplicates.
+- **Per-alignment status** — each saved alignment shows whether it is *exported*, *out of sync* (edited since the last sync), *not exported*, or *not connected*, per provider, with one-click "Update" and "Open in …" actions.
+- **Remove** — deleting a saved alignment can also remove its external calendar event(s); if the calendar removal fails, the alignment is kept.
+- **Bulk actions** — "Save all" captures the currently visible alignment results, and "Add all to calendar" pushes the already-saved ones to the connected calendar (retryable on partial failure).
+- **ICS export** — `.ics` files work without any account as a fallback (import once; future edits are not tracked).
+
+### Calendar Provider Setup (optional)
+Calendar events require OAuth credentials. Without them the app still works and `.ics` export is available.
+
+Set these environment variables (a `.env.local` file is recommended; it is git-ignored):
+
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+```
+
+Register the exact redirect URIs in the Google Cloud Console / Azure App registrations (Microsoft uses Graph **v1.0** only):
+
+```
+<origin>/api/auth/google/callback
+<origin>/api/auth/microsoft/callback
+```
+
+where `<origin>` is the deployed origin (e.g. `https://your-app.vercel.app`). Requests are then proxied through the app's own API routes; tokens are held in HTTP-only cookies and are never visible to the browser.
+
+> **Deployment note:** the calendar API routes require a Node.js server runtime. The build output is no longer fully static — when deploying, use a Node/Vercel-function runtime rather than `output: export`.
 
 ## Commands
 
@@ -61,8 +95,11 @@ Development:
 
 ## Project structure
 
-- `src/app/` — Next.js pages and root layout
-- `src/components/` — UI components (`AlignmentApp`, `AlignmentCalculator`, `AlignmentFinder`, `WorkspaceMap`, `LocationControls`, `LocationEditor`, `LocationSearch`, `TimeFilterPicker`, `FindShootingLocations`, `ShootingLocationMap`, `ShootingLocationResults`, `SearchRadiusPicker`, `TolerancePicker`, `TimePicker`, `StateButton`, `NumberField`, `LandmarkSearch`, `TargetSelectionMap`, `TargetLocationPicker`)
+- `src/app/` — Next.js pages and root layout, plus the server-side calendar/OAuth API routes (`src/app/api/auth/*`, `src/app/api/calendar/*`)
+- `src/components/` — UI components (`AlignmentApp`, `AlignmentCalculator`, `AlignmentFinder`, `WorkspaceMap`, `LocationControls`, `LocationEditor`, `LocationSearch`, `TimeFilterPicker`, `FindShootingLocations`, `ShootingLocationMap`, `ShootingLocationResults`, `SearchRadiusPicker`, `TolerancePicker`, `TimePicker`, `StateButton`, `NumberField`, `LandmarkSearch`, `TargetSelectionMap`, `TargetLocationPicker`, `SaveAlignmentControl`, `SaveAllControl`, `SavedAlignmentCard`, `SavedAlignmentsPage`, `CalendarSettings`, `SavedLocationsPage`)
+- `src/lib/calendar/` — the client-side calendar abstraction (provider classes, event content/ICS builders, sync-status derivation) and the `CalendarProvider` React context
+- `src/lib/server/` — server-only OAuth helpers: token storage (HTTP-only cookies), access-token refresh, provider token exchange, and calendar event payload builders
+- `src/lib/saved/` — saved-entity types and the `SavedLocationsProvider` (IndexedDB-backed store), including alignment calendar-integration metadata
 - `src/lib/geocoding/` — the location-search abstraction (`LocationSearchResult`, `GeocodingService`) and the Nominatim provider, with a debounced `useLocationSearch` hook; `LocationControls` uses it for two independent Observer/Target searches, and `LandmarkSearch`/`TargetLocationPicker` reuse the same `LocationSearch` component
 - `src/lib/astronomy/` — Sun/Moon position, rise/set, and lunar phase helpers
 - `src/lib/geometry/` — bearing, distance, angular separation, altitude, destination point, unit conversions
@@ -79,6 +116,7 @@ Development:
 - "Find Shooting Locations" results are geometric only: no terrain, roads, buildings, accessibility, or line-of-sight obstruction data.
 - The map uses default OpenStreetMap tiles; a satellite base layer is not configured yet.
 - The workspace map lets you drag markers and pan freely; it only auto-fits to the locations when you click "Recentre" or select a search result (to the observer when the Observer search is used, to the target otherwise). It does not move the viewport during calculations, coordinate edits, or sun updates.
-- No backend, accounts, or persistent storage — all computation runs in the browser.
+- No backend, accounts, or persistent storage for planning data — alignment computations run entirely in the browser and saved data lives in the browser's IndexedDB. The only server code is the optional calendar-OAuth proxy routes.
+- Calendar integration requires the environment variables above and a Node server runtime; it is disabled (with `.ics` export still available) when credentials are not configured.
 - Rise/set events are found astronomically; they do not account for local horizon obstruction.
 - Location search requires a network connection and uses the public OpenStreetMap Nominatim service (subject to its usage policy); results are debounced and limited but not cached. The Observer and Target searches are fully independent — selecting or failing one never affects the other, and only a successful selection updates coordinates. No elevation is set by a search result; the existing value is kept.

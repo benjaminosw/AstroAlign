@@ -6,7 +6,7 @@
  * application).
  */
 
-import type { SavedAlignment, SavedShootingGeometry, SavedSetup, SavedTarget } from '../saved/types';
+import type { CalendarIntegrations, SavedAlignment, SavedShootingGeometry, SavedSetup, SavedTarget } from '../saved/types';
 import { validateCoordinates } from '../timezone/validateCoordinates';
 
 function isIsoTimestamp(value: unknown): boolean {
@@ -185,6 +185,53 @@ export function validateSavedAlignment(alignment: unknown): string | null {
   }
   if (!isIsoTimestamp(record.createdAt) || !isIsoTimestamp(record.updatedAt)) {
     return 'Saved alignment timestamps must be valid ISO dates';
+  }
+  const integrationsError = validateCalendarIntegrations(record.calendarIntegrations);
+  if (integrationsError) {
+    return `Saved alignment calendar integrations are invalid: ${integrationsError}`;
+  }
+  return null;
+}
+
+function isCalendarIntegrationEntry(value: unknown, provider: string): string | null {
+  const entry = value as { calendarId?: unknown; eventId?: unknown; eventUrl?: unknown; lastSyncedAt?: unknown } | null;
+  if (!entry || typeof entry !== 'object') {
+    return `${provider} integration must be an object`;
+  }
+  if (typeof entry.calendarId !== 'string' || entry.calendarId.length === 0) {
+    return `${provider} integration calendarId must be a non-empty string`;
+  }
+  if (typeof entry.eventId !== 'string' || entry.eventId.length === 0) {
+    return `${provider} integration eventId must be a non-empty string`;
+  }
+  if (entry.eventUrl !== null && typeof entry.eventUrl !== 'string') {
+    return `${provider} integration eventUrl must be a string or null`;
+  }
+  if (typeof entry.lastSyncedAt !== 'string' || !isIsoTimestamp(entry.lastSyncedAt)) {
+    return `${provider} integration lastSyncedAt must be a valid ISO date`;
+  }
+  return null;
+}
+
+export function validateCalendarIntegrations(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const record = value as CalendarIntegrations | null | undefined;
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return 'must be an object';
+  }
+  if (record.google !== undefined) {
+    const googleError = isCalendarIntegrationEntry(record.google, 'google');
+    if (googleError) {
+      return googleError;
+    }
+  }
+  if (record.microsoft !== undefined) {
+    const microsoftError = isCalendarIntegrationEntry(record.microsoft, 'microsoft');
+    if (microsoftError) {
+      return microsoftError;
+    }
   }
   return null;
 }

@@ -71,6 +71,23 @@ export interface SavedAlignmentShootingLocationSnapshot {
 }
 
 /**
+ * External calendar event metadata for a saved alignment. Never stores OAuth
+ * tokens or secrets — only enough information to open, update, or remove the
+ * corresponding event in the user's calendar.
+ */
+export interface CalendarIntegrationEntry {
+  calendarId: string;
+  eventId: string;
+  eventUrl: string | null;
+  lastSyncedAt: string;
+}
+
+export type CalendarIntegrations = {
+  google?: CalendarIntegrationEntry;
+  microsoft?: CalendarIntegrationEntry;
+};
+
+/**
  * A saved alignment is a permanent, historical calculated event. It keeps
  * references to related saved entities where applicable, but also stores a
  * snapshot of the values that were calculated, so it remains meaningful even
@@ -99,6 +116,7 @@ export interface SavedAlignment {
   targetSnapshot?: SavedAlignmentSnapshotPoint | null;
   shootingPositionSnapshot?: SavedAlignmentShootingPositionSnapshot | null;
   shootingLocationSnapshot?: SavedAlignmentShootingLocationSnapshot | null;
+  calendarIntegrations?: CalendarIntegrations | null;
   createdAt: string;
   updatedAt: string;
 }

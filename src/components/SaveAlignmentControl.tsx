@@ -33,6 +33,33 @@ export interface SaveAlignmentControlProps {
   shootingLocationSnapshot?: SavedAlignmentShootingLocationSnapshot | null;
 }
 
+export function buildSaveAlignmentInput(props: SaveAlignmentControlProps): SaveAlignmentInput {
+  return {
+    source: props.source,
+    object: props.object,
+    event: props.event,
+    date: props.date,
+    time: props.time,
+    timeZone: props.timeZone ?? null,
+    celestialAzimuth: props.celestialAzimuth,
+    targetBearing: props.targetBearing,
+    alignmentError: props.alignmentError,
+    toleranceDegrees: props.toleranceDegrees ?? null,
+    withinTolerance: props.withinTolerance ?? null,
+    moonPhase: props.moonPhase ?? null,
+    targetId: props.targetId ?? null,
+    shootingSetupId: props.shootingSetupId ?? null,
+    observerSnapshot: props.observer
+      ? { latitude: props.observer.latitude, longitude: props.observer.longitude, elevation: props.observer.elevation }
+      : null,
+    targetSnapshot: props.target
+      ? { latitude: props.target.latitude, longitude: props.target.longitude, elevation: props.target.elevation }
+      : null,
+    shootingPositionSnapshot: props.shootingPosition ?? null,
+    shootingLocationSnapshot: props.shootingLocationSnapshot ?? null
+  };
+}
+
 export default function SaveAlignmentControl({
   source,
   object,
@@ -61,31 +88,26 @@ export default function SaveAlignmentControl({
   const alreadySaved = existing !== null || justSaved;
 
   function handleSave() {
-    const input: SaveAlignmentInput = {
+    addSavedAlignment(buildSaveAlignmentInput({
       source,
       object,
       event,
       date,
       time,
-      timeZone: timeZone ?? null,
+      timeZone,
       celestialAzimuth,
       targetBearing,
       alignmentError,
-      toleranceDegrees: toleranceDegrees ?? null,
-      withinTolerance: withinTolerance ?? null,
-      moonPhase: moonPhase ?? null,
-      targetId: targetId ?? null,
-      shootingSetupId: shootingSetupId ?? null,
-      observerSnapshot: observer
-        ? { latitude: observer.latitude, longitude: observer.longitude, elevation: observer.elevation }
-        : null,
-      targetSnapshot: target
-        ? { latitude: target.latitude, longitude: target.longitude, elevation: target.elevation }
-        : null,
-      shootingPositionSnapshot: shootingPosition ?? null,
-      shootingLocationSnapshot: shootingLocationSnapshot ?? null
-    };
-    addSavedAlignment(input);
+      toleranceDegrees,
+      withinTolerance,
+      moonPhase,
+      targetId,
+      shootingSetupId,
+      observer,
+      target,
+      shootingPosition,
+      shootingLocationSnapshot
+    }));
     setJustSaved(true);
   }
 

@@ -16,7 +16,8 @@ import LocationControls from './LocationControls';
 import TolerancePicker from './TolerancePicker';
 import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
-import SaveAlignmentControl from './SaveAlignmentControl';
+import SaveAlignmentControl, { buildSaveAlignmentInput } from './SaveAlignmentControl';
+import SaveAllControl from './SaveAllControl';
 import { useSavedLocations } from '../lib/saved/savedState';
 import { usePersistedState } from '../lib/storage/appState';
 import type { TimeFilterOption } from '../lib/alignment/timeFilter';
@@ -300,6 +301,32 @@ export default function AlignmentFinder({
 
   const selectedCandidate = visibleResults && selectedIndex !== null ? visibleResults[selectedIndex] ?? null : null;
 
+  const saveAllItems = useMemo(() => {
+    if (!visibleResults || visibleResults.length === 0 || !lastSearchedInputs) {
+      return [];
+    }
+    return visibleResults.map((candidate) => ({
+      input: buildSaveAlignmentInput({
+        source: 'finder',
+        object: lastSearchedInputs.object,
+        event: candidate.eventType,
+        date: candidate.localDate,
+        time: candidate.localTime,
+        timeZone: candidate.timeZone,
+        celestialAzimuth: candidate.object.azimuth,
+        targetBearing: candidate.target.bearing,
+        alignmentError: candidate.score,
+        toleranceDegrees: lastSearchedInputs.toleranceDegrees,
+        withinTolerance: candidate.alignment.withinTolerance,
+        moonPhase: candidate.moonPhase ?? null,
+        targetId: alignmentTargetId,
+        observer,
+        target
+      }),
+      targetName: landmark?.name ?? null
+    }));
+  }, [visibleResults, lastSearchedInputs, alignmentTargetId, observer, target, landmark]);
+
   function handleSelectObserverLandmark(selected: SelectedLandmark) {
     onSelectObserverLandmark(selected);
     setFitLocation('observer');
@@ -551,6 +578,12 @@ export default function AlignmentFinder({
               </p>
             )}
           </div>
+
+          {visibleResults !== null && visibleResults.length > 0 && lastSearchedInputs && (
+            <div className="mt-3">
+              <SaveAllControl items={saveAllItems} onGoToSettings={onGoToSavedLocations} />
+            </div>
+          )}
 
           {selectedCandidate && lastSearchedInputs && (
             <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4">

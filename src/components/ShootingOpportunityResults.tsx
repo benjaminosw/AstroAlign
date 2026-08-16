@@ -1,9 +1,11 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { AstroObject, GeographicPoint } from '../types/astronomy';
 import type { ShootingOpportunity } from '../lib/opportunities/types';
 import { formatResultDate } from '../lib/utils/formatResultDate';
-import SaveAlignmentControl from './SaveAlignmentControl';
+import SaveAlignmentControl, { buildSaveAlignmentInput } from './SaveAlignmentControl';
+import SaveAllControl from './SaveAllControl';
 import type { SavedAlignmentShootingLocationSnapshot } from '../lib/saved/types';
 
 interface ShootingOpportunityResultsProps {
@@ -21,6 +23,7 @@ interface ShootingOpportunityResultsProps {
   targetId?: string | null;
   shootingSetupId?: string | null;
   shootingLocationSnapshot?: SavedAlignmentShootingLocationSnapshot | null;
+  onGoToSettings?: () => void;
 }
 
 function positionLabel(opportunity: ShootingOpportunity): string {
@@ -51,10 +54,47 @@ export default function ShootingOpportunityResults({
   toleranceDegrees = 0,
   targetId = null,
   shootingSetupId = null,
-  shootingLocationSnapshot = null
+  shootingLocationSnapshot = null,
+  onGoToSettings = () => {}
 }: ShootingOpportunityResultsProps) {
   const totalCount = allResults?.length ?? 0;
   const shownCount = visibleResults.length;
+
+  const saveAllItems = useMemo(() => {
+    return visibleResults.map((opportunity) => ({
+      input: buildSaveAlignmentInput({
+        source: 'shooting',
+        object: opportunity.object,
+        event: opportunity.eventType,
+        date: opportunity.localDate,
+        time: opportunity.localTime,
+        timeZone: opportunity.timeZone,
+        celestialAzimuth: opportunity.objectAzimuth,
+        targetBearing: opportunity.position.bearingToTarget,
+        alignmentError: opportunity.position.alignmentError,
+        toleranceDegrees,
+        withinTolerance: opportunity.position.alignmentError <= toleranceDegrees,
+        moonPhase: opportunity.moonPhase ?? null,
+        targetId,
+        shootingSetupId,
+        observer: null,
+        target,
+        shootingPosition: {
+          latitude: opportunity.position.latitude,
+          longitude: opportunity.position.longitude,
+          bearingToTarget: opportunity.position.bearingToTarget,
+          alignmentError: opportunity.position.alignmentError,
+          distanceFromStartKm: opportunity.position.distanceFromStartKm,
+          zoneStartKm: opportunity.position.zoneStartKm,
+          zoneEndKm: opportunity.position.zoneEndKm,
+          source: opportunity.position.source,
+          pointName: opportunity.position.pointName ?? null
+        },
+        shootingLocationSnapshot
+      }),
+      targetName: target ? `${target.latitude.toFixed(5)}, ${target.longitude.toFixed(5)}` : null
+    }));
+  }, [visibleResults, toleranceDegrees, targetId, shootingSetupId, target, shootingLocationSnapshot]);
 
   return (
     <section data-testid="shooting-opportunity-results" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
@@ -73,6 +113,12 @@ export default function ShootingOpportunityResults({
         Geometric alignment only — not checked for accessibility, roads, obstructions, terrain, visibility or legal
         access.
       </p>
+
+      {visibleResults.length > 0 && (
+        <div className="mt-3">
+          <SaveAllControl items={saveAllItems} onGoToSettings={onGoToSettings} />
+        </div>
+      )}
 
       {selectedOpportunity && (
         <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-900/70 p-4">

@@ -11,6 +11,7 @@ import AlignmentFinder from './AlignmentFinder';
 import FindShootingOpportunities from './FindShootingOpportunities';
 import SavedLocationsPage from './SavedLocationsPage';
 import SavedAlignmentsPage from './SavedAlignmentsPage';
+import { CalendarProvider } from '../lib/calendar/CalendarProvider';
 import { ShootingStateProvider, useShootingState } from '../lib/opportunities/shootingState';
 import { SavedLocationsProvider, useSavedLocations } from '../lib/saved/savedState';
 import { AppStateProvider, useAppState, usePersistedState } from '../lib/storage/appState';
@@ -234,7 +235,7 @@ function AlignmentAppContent() {
       {activeTab === 'saved' && (
         <SavedLocationsPage onOpenTarget={handleOpenSavedTarget} onOpenSetup={handleOpenSavedSetup} />
       )}
-      {activeTab === 'alignments' && <SavedAlignmentsPage />}
+      {activeTab === 'alignments' && <SavedAlignmentsPage onGoToSettings={() => setActiveTab('saved')} />}
     </div>
   );
 }
@@ -261,17 +262,19 @@ function AppGate() {
     return <AppLoading />;
   }
   return (
-    <ShootingStateProvider>
-      <SavedLocationsProvider>
-        <div className="grid gap-8">
-          {persistenceError && (
-            <div className="rounded-2xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
-              {persistenceError}
-            </div>
-          )}
-          <AlignmentAppContent />
-        </div>
-      </SavedLocationsProvider>
-    </ShootingStateProvider>
+    <CalendarProvider>
+      <ShootingStateProvider>
+        <SavedLocationsProvider>
+          <div className="grid gap-8">
+            {persistenceError && (
+              <div className="rounded-2xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+                {persistenceError}
+              </div>
+            )}
+            <AlignmentAppContent />
+          </div>
+        </SavedLocationsProvider>
+      </ShootingStateProvider>
+    </CalendarProvider>
   );
 }
