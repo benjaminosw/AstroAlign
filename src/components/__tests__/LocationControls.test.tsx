@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import LocationControls from '../LocationControls';
+import { SavedLocationsProvider } from '../../lib/saved/savedState';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import type { SelectedLandmark } from '../../lib/geocoding/types';
 
@@ -25,27 +26,29 @@ function Harness({
   const [landmark, setLandmark] = useState<SelectedLandmark | null>(null);
 
   return (
-    <LocationControls
-      observer={observer}
-      target={target}
-      observerLandmark={observerLandmark}
-      landmark={landmark}
-      timeZone="Asia/Singapore"
-      timeZoneStatus="idle"
-      onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
-      onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-      onSelectObserverLandmark={(selected) => {
-        setObserverLandmark(selected);
-        setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
-      }}
-      onSelectLandmark={(selected) => {
-        setLandmark(selected);
-        setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
-      }}
-      onClearObserverLandmark={() => setObserverLandmark(null)}
-      onClearLandmark={() => setLandmark(null)}
-      onInputErrorChange={onInputErrorChange}
-    />
+    <SavedLocationsProvider>
+      <LocationControls
+        observer={observer}
+        target={target}
+        observerLandmark={observerLandmark}
+        landmark={landmark}
+        timeZone="Asia/Singapore"
+        timeZoneStatus="idle"
+        onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
+        onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+        onSelectObserverLandmark={(selected) => {
+          setObserverLandmark(selected);
+          setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+        }}
+        onSelectLandmark={(selected) => {
+          setLandmark(selected);
+          setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+        }}
+        onClearObserverLandmark={() => setObserverLandmark(null)}
+        onClearLandmark={() => setLandmark(null)}
+        onInputErrorChange={onInputErrorChange}
+      />
+    </SavedLocationsProvider>
   );
 }
 
@@ -86,6 +89,22 @@ async function selectSearchResult(placeholder: string, resultName: string) {
 }
 
 describe('LocationControls', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('renders a Save target button under the target panel and saves the target', async () => {
+    render(<Harness />);
+
+    expect(screen.getByTestId('save-target-button')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('save-target-button'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-target-button')).toBeTruthy();
+    });
+    expect(screen.getByTestId('saved-target-button').textContent).toMatch(/Target 1\.315079,103\.892121/);
+  });
+
   it('renders the Location heading, plain-text coordinate panels, timezone chip, and both search bars', () => {
     render(<Harness />);
 

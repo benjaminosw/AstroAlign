@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import AlignmentFinder from '../AlignmentFinder';
+import { SavedLocationsProvider } from '../../lib/saved/savedState';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
 import type { SelectedLandmark } from '../../lib/geocoding/types';
@@ -124,27 +125,29 @@ function Harness() {
   const observerCoordinateError = validateCoordinates(observer.latitude, observer.longitude);
 
   return (
-    <AlignmentFinder
-      observer={observer}
-      target={target}
-      observerLandmark={observerLandmark}
-      landmark={landmark}
-      timeZone="Asia/Singapore"
-      timeZoneStatus="idle"
-      observerCoordinateError={observerCoordinateError}
-      onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
-      onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-      onSelectObserverLandmark={(selected) => {
-        setObserverLandmark(selected);
-        setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
-      }}
-      onSelectLandmark={(selected) => {
-        setLandmark(selected);
-        setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
-      }}
-      onClearObserverLandmark={() => setObserverLandmark(null)}
-      onClearLandmark={() => setLandmark(null)}
-    />
+    <SavedLocationsProvider>
+      <AlignmentFinder
+        observer={observer}
+        target={target}
+        observerLandmark={observerLandmark}
+        landmark={landmark}
+        timeZone="Asia/Singapore"
+        timeZoneStatus="idle"
+        observerCoordinateError={observerCoordinateError}
+        onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
+        onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+        onSelectObserverLandmark={(selected) => {
+          setObserverLandmark(selected);
+          setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+        }}
+        onSelectLandmark={(selected) => {
+          setLandmark(selected);
+          setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+        }}
+        onClearObserverLandmark={() => setObserverLandmark(null)}
+        onClearLandmark={() => setLandmark(null)}
+      />
+    </SavedLocationsProvider>
   );
 }
 
@@ -171,6 +174,7 @@ function setMoonPhaseFilter(phaseName: string, checked: boolean) {
 
 describe('AlignmentFinder result filters', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(findAlignments).mockResolvedValue(SIX_CANDIDATES);
   });

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import AlignmentFinder from '../AlignmentFinder';
+import { SavedLocationsProvider } from '../../lib/saved/savedState';
 import { DEFAULT_OBSERVER, DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { validateCoordinates } from '../../lib/timezone/validateCoordinates';
 import { isTimeWithinWindow } from '../../lib/alignment/timeFilter';
@@ -134,27 +135,29 @@ function Harness() {
   const observerCoordinateError = validateCoordinates(observer.latitude, observer.longitude);
 
   return (
-    <AlignmentFinder
-      observer={observer}
-      target={target}
-      observerLandmark={observerLandmark}
-      landmark={landmark}
-      timeZone="Asia/Singapore"
-      timeZoneStatus="idle"
-      observerCoordinateError={observerCoordinateError}
-      onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
-      onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-      onSelectObserverLandmark={(selected) => {
-        setObserverLandmark(selected);
-        setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
-      }}
-      onSelectLandmark={(selected) => {
-        setLandmark(selected);
-        setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
-      }}
-      onClearObserverLandmark={() => setObserverLandmark(null)}
-      onClearLandmark={() => setLandmark(null)}
-    />
+    <SavedLocationsProvider>
+      <AlignmentFinder
+        observer={observer}
+        target={target}
+        observerLandmark={observerLandmark}
+        landmark={landmark}
+        timeZone="Asia/Singapore"
+        timeZoneStatus="idle"
+        observerCoordinateError={observerCoordinateError}
+        onObserverChange={(field, value) => setObserver((prev) => ({ ...prev, [field]: Number(value) }))}
+        onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+        onSelectObserverLandmark={(selected) => {
+          setObserverLandmark(selected);
+          setObserver((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+        }}
+        onSelectLandmark={(selected) => {
+          setLandmark(selected);
+          setTarget((prev) => ({ ...prev, latitude: selected.latitude, longitude: selected.longitude }));
+        }}
+        onClearObserverLandmark={() => setObserverLandmark(null)}
+        onClearLandmark={() => setLandmark(null)}
+      />
+    </SavedLocationsProvider>
   );
 }
 
@@ -200,11 +203,18 @@ function eventLabelOf(item: HTMLElement) {
 
 describe('AlignmentFinder workspace', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(findAlignments).mockImplementation(async (input) => {
       const list = input.object === ASTRO_OBJECT.Moon ? MOON_CANDIDATES : SUN_CANDIDATES;
       return [...list];
     });
+  });
+
+  it('renders a Save target button in the target location panel', () => {
+    render(<Harness />);
+
+    expect(screen.getByTestId('save-target-button')).toBeTruthy();
   });
 
   it('starts in needs-search state with a bright button and placeholder results', () => {

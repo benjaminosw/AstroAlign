@@ -17,6 +17,9 @@ import type { SearchedInputs } from '../lib/opportunities/shootingState';
 import TargetLocationPicker from './TargetLocationPicker';
 import ShootingAreaControls from './ShootingAreaControls';
 import ShootingOpportunityResults from './ShootingOpportunityResults';
+import SaveTargetControl from './SaveTargetControl';
+import SaveShootingLocationControl from './SaveShootingLocationControl';
+import SaveSetupControl from './SaveSetupControl';
 import TolerancePicker from './TolerancePicker';
 import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
@@ -40,6 +43,7 @@ interface FindShootingOpportunitiesProps {
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
   onClearLandmark?: () => void;
+  onGoToSavedLocations?: () => void;
 }
 
 function buildDefaultArea(target: GeographicPoint, mode: ShootingAreaMode): ShootingArea {
@@ -67,7 +71,8 @@ export default function FindShootingOpportunities({
   timeZoneStatus,
   onTargetChange,
   onSelectLandmark = () => {},
-  onClearLandmark = () => {}
+  onClearLandmark = () => {},
+  onGoToSavedLocations = () => {}
 }: FindShootingOpportunitiesProps) {
   const {
     object,
@@ -356,7 +361,10 @@ export default function FindShootingOpportunities({
         <div className="lg:sticky lg:top-8">
           <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-xl font-semibold text-white">Target</h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-xl font-semibold text-white">Target</h2>
+                <SaveTargetControl target={target} landmarkName={landmark?.name ?? null} />
+              </div>
               {timeZoneStatus === 'loading' ? (
                 <span className="text-xs text-slate-400">Detecting timezone…</span>
               ) : timeZoneStatus === 'error' ? (
@@ -383,7 +391,18 @@ export default function FindShootingOpportunities({
 
         <div className="lg:sticky lg:top-8">
           <section className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Shooting area</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Shooting area</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <SaveShootingLocationControl area={area} />
+                <SaveSetupControl
+                  target={target}
+                  landmarkName={landmark?.name ?? null}
+                  area={area}
+                  onGoToSavedLocations={onGoToSavedLocations}
+                />
+              </div>
+            </div>
             <ShootingAreaControls
               area={area}
               defaultPoint={defaultPoint}

@@ -9,9 +9,13 @@ import { validateCoordinates as validateCoordinateValues } from '../lib/timezone
 import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
 import FindShootingOpportunities from './FindShootingOpportunities';
-import { ShootingStateProvider } from '../lib/opportunities/shootingState';
+import SavedLocationsPage from './SavedLocationsPage';
+import { ShootingStateProvider, useShootingState } from '../lib/opportunities/shootingState';
+import { SavedLocationsProvider, useSavedLocations } from '../lib/saved/savedState';
+import type { SavedSetup, SavedTarget } from '../lib/saved/types';
+import { geometryToShootingArea, targetToLandmark } from '../lib/saved/types';
 
-type TabId = 'calculate' | 'find' | 'shooting';
+type TabId = 'calculate' | 'find' | 'shooting' | 'saved';
 
 const TABS: Array<{ id: TabId; label: string; description: string }> = [
   {
@@ -28,10 +32,15 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
     id: 'shooting',
     label: 'Find shooting opportunities',
     description: 'Search across a date range and a shooting area for Sun/Moon rise and set events that align with your target.'
+  },
+  {
+    id: 'saved',
+    label: 'Saved locations',
+    description: 'Manage saved targets, shooting locations, and setups — preserved between sessions.'
   }
 ];
 
-export default function AlignmentApp() {
+function AlignmentAppContent() {
   const [activeTab, setActiveTab] = useState<TabId>('calculate');
   const [observer, setObserver] = useState<GeographicPoint>(DEFAULT_OBSERVER);
   const [target, setTarget] = useState<GeographicPoint>(DEFAULT_TARGET);
@@ -41,6 +50,9 @@ export default function AlignmentApp() {
   const [timeZoneStatus, setTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [targetTimeZone, setTargetTimeZone] = useState<string | null>(null);
   const [targetTimeZoneStatus, setTargetTimeZoneStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  const { setArea, setAreaTouched } = useShootingState();
+  const { targets, shootingLocations, bindTarget, bindShootingLocation } = useSavedLocations();
 
   const observerCoordinateError = validateCoordinateValues(observer.latitude, observer.longitude);
   const targetCoordinateError = validateCoordinateValues(target.latitude, target.longitude);
@@ -119,6 +131,37 @@ export default function AlignmentApp() {
     setTargetLandmark(null);
   }
 
+  function handleOpenSavedTarget(savedTarget: SavedTarget) {
+    setTarget({
+      latitude: savedTarget.latitude,
+      longitude: savedTarget.longitude,
+      elevation: savedTarget.elevation ?? 0
+    });
+    setTargetLandmark(targetToLandmark(savedTarget));
+    bindTarget(savedTarget.id);
+    setActiveTab('shooting');
+  }
+
+  function handleOpenSavedSetup(setup: SavedSetup) {
+    const savedTarget = targets.find((target) => target.id === setup.targetId);
+    const savedLocation = shootingLocations.find((location) => location.id === setup.shootingLocationId);
+    if (savedTarget) {
+      setTarget({
+        latitude: savedTarget.latitude,
+        longitude: savedTarget.longitude,
+        elevation: savedTarget.elevation ?? 0
+      });
+      setTargetLandmark(targetToLandmark(savedTarget));
+      bindTarget(savedTarget.id);
+    }
+    if (savedLocation) {
+      setArea(geometryToShootingArea(savedLocation.geometry));
+      setAreaTouched(true);
+      bindShootingLocation(savedLocation.id);
+    }
+    setActiveTab('shooting');
+  }
+
   const activeTabInfo = TABS.find((tab) => tab.id === activeTab) ?? TABS[0];
 
   const commonProps = {
@@ -138,9 +181,8 @@ export default function AlignmentApp() {
   };
 
   return (
-    <ShootingStateProvider>
-      <div className="grid gap-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="grid gap-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-900 p-1" role="tablist" aria-label="Alignment tools">
           {TABS.map((tab) => (
             <button
@@ -172,9 +214,22 @@ export default function AlignmentApp() {
           onTargetChange={handleTargetChange}
           onSelectLandmark={handleSelectLandmark}
           onClearLandmark={handleClearLandmark}
+          onGoToSavedLocations={() => setActiveTab('saved')}
         />
       )}
-      </div>
+      {activeTab === 'saved' && (
+        <SavedLocationsPage onOpenTarget={handleOpenSavedTarget} onOpenSetup={handleOpenSavedSetup} />
+      )}
+    </div>
+  );
+}
+
+export default function AlignmentApp() {
+  return (
+    <ShootingStateProvider>
+      <SavedLocationsProvider>
+        <AlignmentAppContent />
+      </SavedLocationsProvider>
     </ShootingStateProvider>
   );
 }

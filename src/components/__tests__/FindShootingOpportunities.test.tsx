@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import FindShootingOpportunities from '../FindShootingOpportunities';
 import { ShootingStateProvider } from '../../lib/opportunities/shootingState';
+import { SavedLocationsProvider } from '../../lib/saved/savedState';
 import { DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 import { ASTRO_OBJECT } from '../../types/astronomy';
 import type { ShootingOpportunity } from '../../lib/opportunities/types';
@@ -94,13 +95,15 @@ function Harness() {
   const [target, setTarget] = useState(DEFAULT_TARGET);
   return (
     <ShootingStateProvider>
-      <FindShootingOpportunities
-        target={target}
-        targetCoordinateError={null}
-        timeZone="Asia/Singapore"
-        timeZoneStatus="idle"
-        onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-      />
+      <SavedLocationsProvider>
+        <FindShootingOpportunities
+          target={target}
+          targetCoordinateError={null}
+          timeZone="Asia/Singapore"
+          timeZoneStatus="idle"
+          onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+        />
+      </SavedLocationsProvider>
     </ShootingStateProvider>
   );
 }
@@ -139,6 +142,7 @@ function resultItems() {
 describe('FindShootingOpportunities workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     vi.mocked(findShootingOpportunities).mockImplementation(async (input) => {
       return input.object === ASTRO_OBJECT.Moon ? [...MOON_OPPORTUNITIES] : [...SUN_OPPORTUNITIES];
     });

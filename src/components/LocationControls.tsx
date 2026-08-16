@@ -7,6 +7,7 @@ import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeFor
 import { formatTimezoneLabel } from '../lib/timezone/formatTimezoneLabel';
 import LocationEditor from './LocationEditor';
 import LocationSearch from './LocationSearch';
+import SaveTargetControl from './SaveTargetControl';
 
 interface LocationControlsProps {
   observer: GeographicPoint;
@@ -147,33 +148,38 @@ export default function LocationControls({
             ) : null
           }
         />
-        <LocationEditor
-          idPrefix="target"
-          title="Target location"
-          icon="target"
-          values={target}
-          onChange={onTargetChange}
-          onErrorChange={setTargetError}
-          searchNode={
-            <LocationSearch
-              idPrefix="target"
-              ariaLabel="Target location"
-              placeholder="Search for a landmark or address..."
-              onSelect={onSelectLandmark}
-            />
-          }
-          summaryNode={
-            landmark ? (
-              <PlaceSummary
-                place={landmark}
-                coordinatesAdjusted={targetCoordinatesAdjusted}
-                clearLabel="Clear landmark"
-                onClear={onClearLandmark}
-                icon="🎯"
+        <div className="min-w-0">
+          <LocationEditor
+            idPrefix="target"
+            title="Target location"
+            icon="target"
+            values={target}
+            onChange={onTargetChange}
+            onErrorChange={setTargetError}
+            searchNode={
+              <LocationSearch
+                idPrefix="target"
+                ariaLabel="Target location"
+                placeholder="Search for a landmark or address..."
+                onSelect={onSelectLandmark}
               />
-            ) : null
-          }
-        />
+            }
+            summaryNode={
+              landmark ? (
+                <PlaceSummary
+                  place={landmark}
+                  coordinatesAdjusted={targetCoordinatesAdjusted}
+                  clearLabel="Clear landmark"
+                  onClear={onClearLandmark}
+                  icon="🎯"
+                />
+              ) : null
+            }
+          />
+          <div className="mt-3 flex justify-end">
+            <SaveTargetControl target={target} landmarkName={landmark?.name ?? null} />
+          </div>
+        </div>
       </div>
 
       {hasInputError && (
