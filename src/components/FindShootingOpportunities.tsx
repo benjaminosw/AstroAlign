@@ -161,9 +161,12 @@ export default function FindShootingOpportunities({
   const isCurrent = lastSearchedInputs !== null && isDeepEqual(lastSearchedInputs, currentInputs);
 
   const defaultPoint = useMemo<ShootingAreaPoint>(() => {
+    if (viewport) {
+      return { id: 'default-point', name: '', latitude: viewport.latitude, longitude: viewport.longitude };
+    }
     const point = destinationPoint(target.latitude, target.longitude, 270, 1.0);
     return { id: 'default-point', name: '', latitude: point.latitude, longitude: point.longitude };
-  }, [target]);
+  }, [viewport, target]);
 
   const cameraMarkers = useMemo(() => {
     if (area.type === 'path') {

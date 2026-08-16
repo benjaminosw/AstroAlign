@@ -55,6 +55,7 @@ const START_COLOR = '#22c55e';
 const END_COLOR = '#ef4444';
 const OPPORTUNITY_COLOR = '#38bdf8';
 const OPPORTUNITY_SELECTED_COLOR = '#f59e0b';
+const POINT_MARKER_COLOR = '#8b5cf6';
 const CLUSTER_COLOR = '#0ea5e9';
 
 function lineFeature(coordinates: Array<[number, number]>) {
@@ -415,7 +416,7 @@ export default function ShootingAreaMap({
             ? buildAreaMarkerElement('S', START_COLOR)
             : marker.id === 'end'
               ? buildAreaMarkerElement('E', END_COLOR)
-              : buildCameraElement(0.8);
+              : buildCameraElement(POINT_MARKER_COLOR, 0.8);
         element.setAttribute('aria-label', marker.label);
         const popup = new maplibregl.Popup({ closeButton: false, offset: 14 });
         const created = new maplibregl.Marker({ element, draggable: true, anchor: 'bottom' })
