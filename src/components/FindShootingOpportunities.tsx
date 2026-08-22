@@ -652,6 +652,7 @@ export default function FindShootingOpportunities({
           onResetFilters={resetFilters}
           selectedOpportunity={selectedOpportunity}
           target={target}
+          targetName={landmark?.name ?? null}
           toleranceDegrees={toleranceDegrees}
           targetId={shootingTargetId}
           shootingSetupId={boundSetup?.id ?? null}

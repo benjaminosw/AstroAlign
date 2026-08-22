@@ -1,13 +1,19 @@
 'use client';
 
 import { getAlignmentStars } from '../lib/alignment/alignmentQuality';
-import type { ReverseSearchResult } from '../lib/reverseSearch/types';
+import type { ReverseSearchResult, ShootingLocation } from '../lib/reverseSearch/types';
+import CalendarExportControl from './CalendarExportControl';
+import type { CalendarAlignmentInfo } from '../lib/calendar/types';
+import type { GeographicPoint } from '../types/astronomy';
 
 interface ShootingLocationResultsProps {
   result: ReverseSearchResult | null;
   isCurrent: boolean;
   selectedId: string | null;
   onSelect: (_id: string) => void;
+  target?: GeographicPoint | null;
+  targetName?: string | null;
+  timeZone?: string | null;
 }
 
 function eventLabel(result: ReverseSearchResult): string {
@@ -15,8 +21,43 @@ function eventLabel(result: ReverseSearchResult): string {
   return `${arrow} ${result.event.body}${result.event.type}`;
 }
 
-export default function ShootingLocationResults({ result, isCurrent, selectedId, onSelect }: ShootingLocationResultsProps) {
+export default function ShootingLocationResults({
+  result,
+  isCurrent,
+  selectedId,
+  onSelect,
+  target = null,
+  targetName = null,
+  timeZone = null
+}: ShootingLocationResultsProps) {
   const selected = result?.candidates.find((candidate) => candidate.id === selectedId) ?? result?.candidates[0] ?? null;
+
+  function selectedToCalendarInfo(candidate: ShootingLocation): CalendarAlignmentInfo | null {
+    if (!result || !timeZone) {
+      return null;
+    }
+    return {
+      object: result.event.body,
+      event: result.event.type,
+      date: result.event.localDate,
+      time: result.event.localTime,
+      timeZone,
+      alignmentErrorDegrees: candidate.alignmentError,
+      celestialAzimuth: result.event.azimuth,
+      targetBearing: candidate.bearingToTarget,
+      moonPhase: null,
+      targetName,
+      targetPoint: target ? { latitude: target.latitude, longitude: target.longitude } : null,
+      shootingPosition: {
+        latitude: candidate.latitude,
+        longitude: candidate.longitude,
+        bearingToTarget: candidate.bearingToTarget
+      },
+      objectAltitudeDeg: result.event.altitude
+    };
+  }
+
+  const calendarInfo = selected ? selectedToCalendarInfo(selected) : null;
 
   return (
     <section className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
@@ -126,6 +167,16 @@ export default function ShootingLocationResults({ result, isCurrent, selectedId,
                   </p>
                 </div>
               </div>
+
+              {calendarInfo && (
+                <div className="pt-1">
+                  <CalendarExportControl
+                    testId="shooting-location-calendar-export"
+                    triggerLabel={'\u{1F4C5} Save to Calendar'}
+                    events={[calendarInfo]}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -331,7 +331,15 @@ export default function FindShootingLocations({
         )}
       </div>
 
-      <ShootingLocationResults result={results} isCurrent={isCurrent} selectedId={selectedId} onSelect={setSelectedId} />
+      <ShootingLocationResults
+        result={results}
+        isCurrent={isCurrent}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+        target={target}
+        targetName={landmark?.name ?? null}
+        timeZone={timeZone}
+      />
     </div>
   );
 }

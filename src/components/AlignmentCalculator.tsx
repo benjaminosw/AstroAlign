@@ -16,6 +16,7 @@ import TimePicker from './TimePicker';
 import TolerancePicker from './TolerancePicker';
 import StateButton from './StateButton';
 import SaveAlignmentControl from './SaveAlignmentControl';
+import CalendarExportControl from './CalendarExportControl';
 import { useSavedLocations } from '../lib/saved/savedState';
 import { usePersistedState } from '../lib/storage/appState';
 
@@ -583,7 +584,7 @@ export default function AlignmentCalculator({
                 </div>
               </div>
 
-              <div className="w-full sm:max-w-56">
+              <div className="grid gap-2 sm:max-w-56">
                 <SaveAlignmentControl
                   source="calculator"
                   object={snapshot.object}
@@ -600,6 +601,28 @@ export default function AlignmentCalculator({
                   observer={observer}
                   target={target}
                 />
+                {timeZone && (
+                  <CalendarExportControl
+                    testId="calculator-calendar-export"
+                    triggerLabel={'\u{1F4C5} Calendar'}
+                    events={[
+                      {
+                        object: snapshot.object,
+                        event: null,
+                        date: snapshot.date,
+                        time: snapshot.time,
+                        timeZone,
+                        alignmentErrorDegrees: snapshot.result.alignment.angularSeparation,
+                        celestialAzimuth: snapshot.result.object.azimuth,
+                        targetBearing: snapshot.result.target.bearing,
+                        targetName: snapshot.landmarkName,
+                        observer: { latitude: observer.latitude, longitude: observer.longitude },
+                        targetPoint: { latitude: target.latitude, longitude: target.longitude },
+                        objectAltitudeDeg: snapshot.result.object.altitude
+                      }
+                    ]}
+                  />
+                )}
               </div>
 
               <details data-testid="alignment-details" className="rounded-2xl border border-slate-800 bg-slate-900/50">

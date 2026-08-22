@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import type { SavedAlignment } from '../lib/saved/types';
+import type { CalendarAlignmentInfo } from '../lib/calendar/types';
+import CalendarExportControl from './CalendarExportControl';
 
 interface SavedAlignmentCardProps {
   alignment: SavedAlignment;
@@ -39,6 +41,39 @@ export default function SavedAlignmentCard({
 }: SavedAlignmentCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(alignment.name);
+
+  const calendarInfo: CalendarAlignmentInfo | null = alignment.timeZone
+    ? {
+        object: alignment.object,
+        event: alignment.event,
+        date: alignment.date,
+        time: alignment.time,
+        timeZone: alignment.timeZone,
+        alignmentErrorDegrees: alignment.alignmentError,
+        celestialAzimuth: alignment.celestialAzimuth,
+        targetBearing: alignment.targetBearing,
+        moonPhase: alignment.moonPhase ?? null,
+        targetName,
+        observer: alignment.observerSnapshot
+          ? { latitude: alignment.observerSnapshot.latitude, longitude: alignment.observerSnapshot.longitude }
+          : null,
+        targetPoint: alignment.targetSnapshot
+          ? { latitude: alignment.targetSnapshot.latitude, longitude: alignment.targetSnapshot.longitude }
+          : null,
+        shootingPosition: alignment.shootingPositionSnapshot
+          ? {
+              latitude: alignment.shootingPositionSnapshot.latitude,
+              longitude: alignment.shootingPositionSnapshot.longitude,
+              bearingToTarget: alignment.shootingPositionSnapshot.bearingToTarget,
+              distanceFromStartKm:
+                alignment.shootingPositionSnapshot.source === 'path'
+                  ? alignment.shootingPositionSnapshot.distanceFromStartKm ?? null
+                  : null,
+              pointName: alignment.shootingPositionSnapshot.pointName ?? null
+            }
+          : null
+      }
+    : null;
 
   function saveName() {
     onRename(name.trim());
@@ -158,7 +193,16 @@ export default function SavedAlignmentCard({
             <span className="text-xs text-slate-500">Updated {formatUpdated(alignment.updatedAt)}</span>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            {calendarInfo && (
+              <div className="w-44">
+                <CalendarExportControl
+                  testId={`saved-alignment-calendar-${alignment.id}`}
+                  triggerLabel={'\u{1F4C5} Save to Calendar'}
+                  events={[calendarInfo]}
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => {

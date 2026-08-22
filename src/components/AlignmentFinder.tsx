@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { findAlignments } from '../lib/alignment/findAlignments';
-import type { AlignmentCandidate } from '../lib/alignment/types';
-import { filterAlignmentResults } from '../lib/alignment/filterResults';
+import type { AlignmentCandidate } from '../lib/alignment/types';import { filterAlignmentResults } from '../lib/alignment/filterResults';
 import { ASTRO_OBJECT, AstroObject, GeographicPoint, Target } from '../types/astronomy';
 import type { SelectedLandmark } from '../lib/geocoding/types';
 import { collectFullMoonInstants, isWithinFullMoonWindow, MOON_PHASE_BUCKETS } from '../lib/astronomy/lunarPhase';
@@ -17,9 +16,11 @@ import TolerancePicker from './TolerancePicker';
 import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
 import SaveAlignmentControl from './SaveAlignmentControl';
+import CalendarExportControl from './CalendarExportControl';
 import { useSavedLocations } from '../lib/saved/savedState';
 import { usePersistedState } from '../lib/storage/appState';
 import type { TimeFilterOption } from '../lib/alignment/timeFilter';
+import type { CalendarAlignmentInfo } from '../lib/calendar/types';
 
 const WorkspaceMap = dynamic(() => import('./WorkspaceMap'), {
   ssr: false,
@@ -336,6 +337,28 @@ export default function AlignmentFinder({
         }
       : null;
 
+  function candidateToCalendarInfo(candidate: AlignmentCandidate): CalendarAlignmentInfo {
+    const searched = lastSearchedInputs;
+    return {
+      object: searched?.object ?? object,
+      event: candidate.eventType,
+      date: candidate.localDate,
+      time: candidate.localTime,
+      timeZone: candidate.timeZone,
+      alignmentErrorDegrees: candidate.score,
+      celestialAzimuth: candidate.object.azimuth,
+      targetBearing: candidate.target.bearing,
+      moonPhase: candidate.moonPhase ?? null,
+      moonIlluminationPercent: candidate.moonIlluminationPercent ?? null,
+      targetName: landmark?.name ?? null,
+      observer: searched ? { latitude: searched.observer.latitude, longitude: searched.observer.longitude } : observer,
+      targetPoint: searched
+        ? { latitude: searched.target.latitude, longitude: searched.target.longitude }
+        : target,
+      objectAltitudeDeg: candidate.object.altitude
+    };
+  }
+
   return (
     <div data-testid="finder-workspace" className="space-y-6">
       <LocationControls
@@ -543,13 +566,24 @@ export default function AlignmentFinder({
         <section data-testid="alignment-results-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Alignment results</h2>
-            {allAlignmentResults !== null && (
-              <p data-testid="results-count" className="text-sm font-semibold text-white">
-                {shownCount !== totalCount || filtersActive
-                  ? `${totalCount} alignments found · ${shownCount} shown`
-                  : `${shownCount} alignment${shownCount === 1 ? '' : 's'}`}
-              </p>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              {allAlignmentResults !== null && (
+                <p data-testid="results-count" className="text-sm font-semibold text-white">
+                  {shownCount !== totalCount || filtersActive
+                    ? `${totalCount} alignments found · ${shownCount} shown`
+                    : `${shownCount} alignment${shownCount === 1 ? '' : 's'}`}
+                </p>
+              )}
+              {visibleResults !== null && visibleResults.length > 0 && (
+                <div className="w-44">
+                  <CalendarExportControl
+                    testId="finder-calendar-bulk"
+                    triggerLabel={'\u{1F4C5} Save All to Calendar'}
+                    events={visibleResults.map(candidateToCalendarInfo)}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           {selectedCandidate && lastSearchedInputs && (
@@ -567,7 +601,7 @@ export default function AlignmentFinder({
                     {selectedCandidate.moonPhase ? ` · ${selectedCandidate.moonPhase.name}` : ''}
                   </p>
                 </div>
-                <div className="w-full sm:w-48">
+                <div className="grid w-full gap-2 sm:w-48">
                   <SaveAlignmentControl
                     source="finder"
                     object={lastSearchedInputs.object}
@@ -584,6 +618,11 @@ export default function AlignmentFinder({
                     targetId={alignmentTargetId}
                     observer={observer}
                     target={target}
+                  />
+                  <CalendarExportControl
+                    testId="finder-calendar-export"
+                    triggerLabel={'\u{1F4C5} Calendar'}
+                    events={[candidateToCalendarInfo(selectedCandidate)]}
                   />
                 </div>
               </div>

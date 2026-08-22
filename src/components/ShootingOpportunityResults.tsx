@@ -4,7 +4,9 @@ import type { AstroObject, GeographicPoint } from '../types/astronomy';
 import type { ShootingOpportunity } from '../lib/opportunities/types';
 import { formatResultDate } from '../lib/utils/formatResultDate';
 import SaveAlignmentControl from './SaveAlignmentControl';
+import CalendarExportControl from './CalendarExportControl';
 import type { SavedAlignmentShootingLocationSnapshot } from '../lib/saved/types';
+import type { CalendarAlignmentInfo } from '../lib/calendar/types';
 
 interface ShootingOpportunityResultsProps {
   allResults: ShootingOpportunity[] | null;
@@ -17,6 +19,7 @@ interface ShootingOpportunityResultsProps {
   onResetFilters: () => void;
   selectedOpportunity?: ShootingOpportunity | null;
   target?: GeographicPoint | null;
+  targetName?: string | null;
   toleranceDegrees?: number;
   targetId?: string | null;
   shootingSetupId?: string | null;
@@ -48,6 +51,7 @@ export default function ShootingOpportunityResults({
   onResetFilters,
   selectedOpportunity = null,
   target = null,
+  targetName = null,
   toleranceDegrees = 0,
   targetId = null,
   shootingSetupId = null,
@@ -56,17 +60,54 @@ export default function ShootingOpportunityResults({
   const totalCount = allResults?.length ?? 0;
   const shownCount = visibleResults.length;
 
+  function opportunityToCalendarInfo(opportunity: ShootingOpportunity): CalendarAlignmentInfo {
+    return {
+      object: opportunity.object,
+      event: opportunity.eventType,
+      date: opportunity.localDate,
+      time: opportunity.localTime,
+      timeZone: opportunity.timeZone,
+      alignmentErrorDegrees: opportunity.position.alignmentError,
+      celestialAzimuth: opportunity.objectAzimuth,
+      targetBearing: opportunity.position.bearingToTarget,
+      moonPhase: opportunity.moonPhase ?? null,
+      moonIlluminationPercent: opportunity.moonIlluminationPercent ?? null,
+      targetName,
+      targetPoint: target ? { latitude: target.latitude, longitude: target.longitude } : null,
+      shootingPosition: {
+        latitude: opportunity.position.latitude,
+        longitude: opportunity.position.longitude,
+        bearingToTarget: opportunity.position.bearingToTarget,
+        distanceFromStartKm:
+          opportunity.position.source === 'path' ? opportunity.position.distanceFromStartKm : null,
+        pointName: opportunity.position.pointName ?? null
+      },
+      objectAltitudeDeg: opportunity.objectAltitude
+    };
+  }
+
   return (
     <section data-testid="shooting-opportunity-results" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Shooting opportunities</h2>
-        {allResults !== null && (
-          <p data-testid="opportunities-count" className="text-sm font-semibold text-white">
-            {shownCount !== totalCount || filtersActive
-              ? `${totalCount} opportunities found · ${shownCount} shown`
-              : `${shownCount} opportunit${shownCount === 1 ? 'y' : 'ies'}`}
-          </p>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {allResults !== null && (
+            <p data-testid="opportunities-count" className="text-sm font-semibold text-white">
+              {shownCount !== totalCount || filtersActive
+                ? `${totalCount} opportunities found · ${shownCount} shown`
+                : `${shownCount} opportunit${shownCount === 1 ? 'y' : 'ies'}`}
+            </p>
+          )}
+          {visibleResults.length > 0 && (
+            <div className="w-44">
+              <CalendarExportControl
+                testId="opportunity-calendar-bulk"
+                triggerLabel={'\u{1F4C5} Save All to Calendar'}
+                events={visibleResults.map(opportunityToCalendarInfo)}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <p data-testid="geometric-alignment-note" className="mt-3 text-xs leading-relaxed text-slate-500">
@@ -88,7 +129,7 @@ export default function ShootingOpportunityResults({
                 {selectedOpportunity.position.alignmentError.toFixed(2)}°
               </p>
             </div>
-            <div className="w-full sm:w-48">
+            <div className="grid w-full gap-2 sm:w-48">
               <SaveAlignmentControl
                 source="shooting"
                 object={selectedOpportunity.object}
@@ -118,6 +159,11 @@ export default function ShootingOpportunityResults({
                   pointName: selectedOpportunity.position.pointName ?? null
                 }}
                 shootingLocationSnapshot={shootingLocationSnapshot}
+              />
+              <CalendarExportControl
+                testId="opportunity-calendar-export"
+                triggerLabel={'\u{1F4C5} Calendar'}
+                events={[opportunityToCalendarInfo(selectedOpportunity)]}
               />
             </div>
           </div>
