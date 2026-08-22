@@ -174,7 +174,7 @@ afterEach(() => {
     await openMap();
     fireEvent.change(latitudeInput(), { target: { value: '2.2' } });
 
-    expect(screen.getByTestId('target-map-coords').textContent).toBe('2.2,103.89212097301142');
+    expect(screen.getByTestId('target-map-coords').textContent).toBe(`2.2,${DEFAULT_TARGET.longitude}`);
   });
 
   it('manual coordinate targeting works without ever selecting a landmark', () => {

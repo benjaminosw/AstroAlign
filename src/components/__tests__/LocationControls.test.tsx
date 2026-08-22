@@ -102,7 +102,9 @@ describe('LocationControls', () => {
     await waitFor(() => {
       expect(screen.getByTestId('saved-target-button')).toBeTruthy();
     });
-    expect(screen.getByTestId('saved-target-button').textContent).toMatch(/Target 1\.315079,103\.892121/);
+    expect(screen.getByTestId('saved-target-button').textContent).toMatch(
+      new RegExp(`Target ${DEFAULT_TARGET.latitude.toFixed(6)},${DEFAULT_TARGET.longitude.toFixed(6)}`)
+    );
   });
 
   it('renders observer save controls and saves the observer as a shooting location', async () => {
