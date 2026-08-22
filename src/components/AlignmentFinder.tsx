@@ -575,13 +575,11 @@ export default function AlignmentFinder({
                 </p>
               )}
               {visibleResults !== null && visibleResults.length > 0 && (
-                <div className="w-44">
-                  <CalendarExportControl
-                    testId="finder-calendar-bulk"
-                    triggerLabel={'\u{1F4C5} Save All to Calendar'}
-                    events={visibleResults.map(candidateToCalendarInfo)}
-                  />
-                </div>
+                <CalendarExportControl
+                  testId="finder-calendar-bulk"
+                  triggerLabel={'\u{1F4C5} Save All to Calendar'}
+                  events={visibleResults.map(candidateToCalendarInfo)}
+                />
               )}
             </div>
           </div>

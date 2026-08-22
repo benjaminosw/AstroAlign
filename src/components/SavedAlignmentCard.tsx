@@ -195,13 +195,12 @@ export default function SavedAlignmentCard({
 
           <div className="flex flex-wrap items-start gap-2">
             {calendarInfo && (
-              <div className="w-44">
-                <CalendarExportControl
-                  testId={`saved-alignment-calendar-${alignment.id}`}
-                  triggerLabel={'\u{1F4C5} Save to Calendar'}
-                  events={[calendarInfo]}
-                />
-              </div>
+              <CalendarExportControl
+                testId={`saved-alignment-calendar-${alignment.id}`}
+                triggerLabel={'\u{1F4C5} Save to Calendar'}
+                events={[calendarInfo]}
+                compact
+              />
             )}
             <button
               type="button"

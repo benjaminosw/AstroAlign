@@ -240,21 +240,19 @@ describe('WorkspaceMap', () => {
     const targetMarker = findMarkerByLabel('Target');
     expect(observerMarker?.options.anchor).toBe('bottom');
     expect(targetMarker?.options.anchor).toBe('bottom');
-    expect((observerMarker?.options.element as HTMLElement)?.querySelector('svg')?.getAttribute('viewBox')).toBe(
-      '0 0 32 36'
-    );
+    expect((observerMarker?.options.element as HTMLElement)?.textContent).toBe('📍');
     expect((targetMarker?.options.element as HTMLElement)?.querySelector('svg')?.getAttribute('viewBox')).toBe(
       '0 0 32 40'
     );
   });
 
-  it('renders SVG markers without permanent text labels underneath them', () => {
+  it('renders markers without permanent text labels underneath them', () => {
     render(<WorkspaceMap {...PROPS} targetName="Marina Bay Sands" />);
     loadMap();
 
-    expect(markerElement('Observer').querySelector('svg')).toBeTruthy();
+    expect(markerElement('Observer').querySelector('svg')).toBeFalsy();
     expect(markerElement('Target').querySelector('svg')).toBeTruthy();
-    expect(markerElement('Observer').textContent).toBe('');
+    expect(markerElement('Observer').textContent).toBe('📍');
     expect(markerElement('Target').textContent).toBe('');
   });
 
@@ -262,10 +260,9 @@ describe('WorkspaceMap', () => {
     render(<WorkspaceMap {...PROPS} />);
     loadMap();
 
-    const observerIcon = markerElement('Observer').querySelector('svg')?.innerHTML ?? '';
+    const observerIcon = markerElement('Observer').textContent ?? '';
     const targetIcon = markerElement('Target').querySelector('svg')?.innerHTML ?? '';
-    expect(observerIcon).toContain('#38bdf8');
-    expect(observerIcon).toContain('L7 35');
+    expect(observerIcon).toBe('📍');
     expect(targetIcon).toContain('#f59e0b');
     expect(targetIcon).toContain('M16 1.5');
   });

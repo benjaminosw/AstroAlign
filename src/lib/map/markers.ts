@@ -56,7 +56,7 @@ export function buildAreaMarkerElement(letter: 'S' | 'E', color: string): HTMLEl
   return element;
 }
 
-export function buildCameraElement(color: string, scale = 1): HTMLElement {
+export function buildCameraElement(_color: string, scale = 1): HTMLElement {
   const element = document.createElement('div');
   element.style.cssText = [
     'display:flex',
@@ -66,27 +66,17 @@ export function buildCameraElement(color: string, scale = 1): HTMLElement {
     'filter:drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))',
     'transition:filter 140ms ease'
   ].join(';');
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 32 36');
-  svg.setAttribute('width', String(28 * scale));
-  svg.setAttribute('height', String(32 * scale));
-  svg.setAttribute('aria-hidden', 'true');
-  svg.style.cssText = [
+  const glyph = document.createElement('span');
+  glyph.setAttribute('aria-hidden', 'true');
+  glyph.textContent = '📍';
+  glyph.style.cssText = [
     'display:block',
+    `font-size:${Math.round(26 * scale)}px`,
+    'line-height:1',
     'transition:transform 140ms ease',
     'transform-origin:50% 100%'
   ].join(';');
-  svg.innerHTML = [
-    `<path d="M12 7 L13 4 L19 4 L20 7 Z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.2"/>`,
-    `<path d="M7 7 h18 a3 3 0 0 1 3 3 v8 a3 3 0 0 1 -3 3 h-18 a3 3 0 0 1 -3 -3 v-8 a3 3 0 0 1 3 -3 z" fill="${color}" stroke="rgba(15,23,42,0.85)" stroke-width="1.5"/>`,
-    '<circle cx="16" cy="12.5" r="4.5" fill="white"/>',
-    `<circle cx="16" cy="12.5" r="2.75" fill="${color}"/>`,
-    `<path d="M13 21 L7 35 M19 21 L25 35 M16 21 L16 35" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>`,
-    `<circle cx="7" cy="35" r="1.5" fill="${color}"/>`,
-    `<circle cx="25" cy="35" r="1.5" fill="${color}"/>`,
-    `<circle cx="16" cy="35" r="1.5" fill="${color}"/>`
-  ].join('');
-  element.appendChild(svg);
+  element.appendChild(glyph);
   return element;
 }
 
@@ -95,9 +85,9 @@ export function setMarkerActive(element: HTMLElement | null, isActive: boolean) 
     return;
   }
   element.setAttribute('data-marker-active', String(isActive));
-  const svg = element.querySelector('svg');
-  if (svg) {
-    svg.style.transform = isActive ? 'scale(1.25)' : 'scale(1)';
+  const icon = element.firstElementChild as HTMLElement | null;
+  if (icon) {
+    icon.style.transform = isActive ? 'scale(1.25)' : 'scale(1)';
   }
   element.style.filter = isActive
     ? 'drop-shadow(0 0 10px rgb(56 189 248 / 0.8)) drop-shadow(0 2px 3px rgb(0 0 0 / 0.5))'

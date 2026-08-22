@@ -11,15 +11,18 @@ interface CalendarExportControlProps {
   events: CalendarAlignmentInfo[];
   triggerLabel?: string;
   testId?: string;
+  /** Compact trigger sized to match small card action buttons. */
+  compact?: boolean;
 }
 
 const triggerClass =
-  'w-full rounded-xl border border-slate-700 bg-slate-900 text-sm font-semibold text-slate-200 transition hover:bg-slate-800';
+  'w-full whitespace-nowrap rounded-xl border border-slate-700 bg-slate-900 font-semibold text-slate-200 transition hover:bg-slate-800';
 
 export default function CalendarExportControl({
   events,
   triggerLabel = '\u{1F4C5} Save to Calendar',
-  testId = 'calendar-export'
+  testId = 'calendar-export',
+  compact = false
 }: CalendarExportControlProps) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -32,6 +35,14 @@ export default function CalendarExportControl({
       return [];
     }
   }, [events]);
+
+  useEffect(() => {
+    if (!status) {
+      return;
+    }
+    const timer = window.setTimeout(() => setStatus(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   useEffect(() => {
     if (!open) {
@@ -90,7 +101,7 @@ export default function CalendarExportControl({
           setStatus(null);
           setOpen((value) => !value);
         }}
-        className={`${triggerClass} px-3 py-2 ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+        className={`${triggerClass} ${compact ? 'px-3 py-1.5 text-xs' : 'px-3 py-2 text-sm'} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
       >
         {triggerLabel}
       </button>

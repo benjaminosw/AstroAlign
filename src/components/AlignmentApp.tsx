@@ -196,24 +196,34 @@ function AlignmentAppContent() {
 
   return (
     <div className="grid gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="inline-flex rounded-2xl border border-slate-800 bg-slate-900 p-1" role="tablist" aria-label="Alignment tools">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:px-6 ${
-                activeTab === tab.id ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <div className="min-w-0">
+        <div className="flex min-w-0">
+          <div
+            className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            role="tablist"
+            aria-label="Alignment tools"
+          >
+            <div className="w-fit rounded-2xl border border-slate-800 bg-slate-900 p-1">
+              <div className="flex w-max">
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:px-6 ${
+                      activeTab === tab.id ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <p className="max-w-md text-sm text-slate-400">{activeTabInfo.description}</p>
+        <p className="mt-3 max-w-md text-sm text-slate-400">{activeTabInfo.description}</p>
       </div>
 
       {activeTab === 'calculate' && <AlignmentCalculator {...commonProps} />}

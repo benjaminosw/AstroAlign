@@ -99,13 +99,11 @@ export default function ShootingOpportunityResults({
             </p>
           )}
           {visibleResults.length > 0 && (
-            <div className="w-44">
-              <CalendarExportControl
-                testId="opportunity-calendar-bulk"
-                triggerLabel={'\u{1F4C5} Save All to Calendar'}
-                events={visibleResults.map(opportunityToCalendarInfo)}
-              />
-            </div>
+            <CalendarExportControl
+              testId="opportunity-calendar-bulk"
+              triggerLabel={'\u{1F4C5} Save All to Calendar'}
+              events={visibleResults.map(opportunityToCalendarInfo)}
+            />
           )}
         </div>
       </div>
