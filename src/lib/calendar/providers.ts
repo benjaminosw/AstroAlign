@@ -26,13 +26,23 @@ export interface CalendarProviderLike {
  * Deterministic external event id for an alignment. Google Calendar lets the
  * client supply an event `id`; reusing the same id for the same alignment
  * makes creation idempotent so duplicate events are never created.
+ * Google restricts supplied ids to base32hex characters (lowercase letters
+ * a-v and digits 0-9), so the dedupe key is hashed into a hex string.
  */
 export function googleClientEventId(alignment: SavedAlignment): string {
-  const sanitized = alignment.dedupeKey
-    .replace(/[^A-Za-z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return `astroalign-${sanitized}`;
+  const key = alignment.dedupeKey;
+  const first = fnv1aHex(key, 0x811c9dc5);
+  const second = fnv1aHex(`${key}|${first}`, 0x811c9dc5);
+  return `aa${first}${second}`;
+}
+
+function fnv1aHex(input: string, offsetBasis: number): string {
+  let hash = offsetBasis >>> 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
 }
 
 export class GoogleCalendarProvider implements CalendarProviderLike {

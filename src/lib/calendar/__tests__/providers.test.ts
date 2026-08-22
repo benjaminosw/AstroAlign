@@ -55,18 +55,22 @@ describe('calendar providers', () => {
   });
 
   describe('googleClientEventId', () => {
-    it('is deterministic and namespaced with the astroalign prefix', () => {
+    it('is deterministic for the same alignment', () => {
       const first = googleClientEventId(makeAlignment());
       const second = googleClientEventId(makeAlignment());
-      expect(first).toBe('astroalign-finder-Sun-rise-2027-08-01-07-00-00-90-000');
       expect(first).toBe(second);
     });
 
-    it('sanitizes characters that are invalid in Google event ids', () => {
+    it('differs for different alignments', () => {
+      const first = googleClientEventId(makeAlignment({ id: 'align-1' }));
+      const second = googleClientEventId(makeAlignment({ id: 'align-2', dedupeKey: 'finder|Sun|rise|2027-08-02|07:00:00|90.000' }));
+      expect(first).not.toBe(second);
+    });
+
+    it('satisfies the Google base32hex id restrictions', () => {
       const alignment = makeAlignment({ dedupeKey: 'finder|Sun Moon|rise|2027-08-01|07:00:00|90.000' });
       const id = googleClientEventId(alignment);
-      expect(id.startsWith('astroalign-')).toBe(true);
-      expect(/[^A-Za-z0-9_-]/.test(id)).toBe(false);
+      expect(id).toMatch(/^[a-v0-9]{5,1024}$/);
     });
   });
 
