@@ -280,4 +280,69 @@ describe('FindShootingOpportunities workspace', () => {
     expect(map.getAttribute('data-camera-count')).toBe('2');
     expect(map.getAttribute('data-area-mode')).toBe('points');
   });
+
+  it('re-enables save when switching to a different unsaved opportunity', async () => {
+    vi.mocked(findShootingOpportunities).mockResolvedValue([
+      opportunity('opp-a', { localTime: '06:30:00', objectAzimuth: 76.4 }),
+      opportunity('opp-b', { localDate: '2027-08-18', localTime: '06:31:00', objectAzimuth: 77.2 })
+    ]);
+    render(<Harness />);
+    await searchAndWait();
+
+    const saveButton = () => screen.getByTestId('save-alignment-button') as HTMLButtonElement;
+    expect(saveButton().textContent).toBe('Save alignment');
+
+    fireEvent.click(saveButton());
+    await waitFor(() => {
+      expect(saveButton().textContent).toMatch(/saved/i);
+      expect(saveButton().disabled).toBe(true);
+    });
+
+    fireEvent.click(resultItems()[1]);
+
+    expect(saveButton().textContent).toBe('Save alignment');
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it('shows the remaining count on Save all and saves every visible opportunity', async () => {
+    vi.mocked(findShootingOpportunities).mockResolvedValue([
+      opportunity('opp-a', { localTime: '06:30:00', objectAzimuth: 76.4 }),
+      opportunity('opp-b', { localDate: '2027-08-18', localTime: '06:31:00', objectAzimuth: 77.2 })
+    ]);
+    render(<Harness />);
+    await searchAndWait();
+
+    const saveAllButton = () => screen.getByTestId('save-all-alignments-button') as HTMLButtonElement;
+    expect(saveAllButton().textContent).toMatch(/Save all \(2\)/);
+
+    fireEvent.click(saveAllButton());
+
+    await waitFor(() => {
+      expect(saveAllButton().textContent).toMatch(/All saved/i);
+      expect(saveAllButton().disabled).toBe(true);
+    });
+    expect((screen.getByTestId('save-alignment-button') as HTMLButtonElement).textContent).toMatch(/saved/i);
+  });
+
+  it('Save all only saves opportunities that are not already saved', async () => {
+    vi.mocked(findShootingOpportunities).mockResolvedValue([
+      opportunity('opp-a', { localTime: '06:30:00', objectAzimuth: 76.4 }),
+      opportunity('opp-b', { localDate: '2027-08-18', localTime: '06:31:00', objectAzimuth: 77.2 })
+    ]);
+    render(<Harness />);
+    await searchAndWait();
+
+    fireEvent.click(screen.getByTestId('save-alignment-button'));
+    await waitFor(() => {
+      expect(screen.getByTestId('save-all-alignments-button').textContent).toMatch(/Save all \(1\)/);
+    });
+
+    fireEvent.click(screen.getByTestId('save-all-alignments-button'));
+
+    await waitFor(() => {
+      const button = screen.getByTestId('save-all-alignments-button') as HTMLButtonElement;
+      expect(button.textContent).toMatch(/All saved/i);
+      expect(button.disabled).toBe(true);
+    });
+  });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ShootingArea, ShootingAreaMode, ShootingAreaPoint } from '../lib/opportunities/types';
 import type { LocationSearchResult } from '../lib/geocoding/types';
 import NumberField from './NumberField';
@@ -41,6 +41,16 @@ export default function ShootingAreaControls({
   onAreaChange
 }: ShootingAreaControlsProps) {
   const idCounter = useRef(1);
+  const listRef = useRef<HTMLDivElement>(null);
+  const pointCount = area.type === 'points' ? area.points.length : 0;
+  const prevCountRef = useRef(pointCount);
+
+  useEffect(() => {
+    if (pointCount > prevCountRef.current && listRef.current) {
+      listRef.current.scrollTo({ top: listRef.current.scrollHeight });
+    }
+    prevCountRef.current = pointCount;
+  }, [pointCount]);
 
   function nextPointId() {
     const id = `shooting-point-${Date.now().toString(36)}-${idCounter.current}`;
@@ -194,12 +204,17 @@ export default function ShootingAreaControls({
             errorMessage="Unable to search for places right now."
           />
 
-          {area.points.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 px-4 py-4 text-sm text-slate-500">
-              No points yet. Add one below or with the search box above.
-            </p>
-          ) : (
-            <div className="space-y-3">
+          <div
+            ref={listRef}
+            data-testid="shooting-points-list"
+            className="h-[19rem] space-y-3 overflow-y-auto pr-1"
+          >
+            {area.points.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 px-4 py-4 text-sm text-slate-500">
+                No points yet. Add one below or with the search box above.
+              </p>
+            ) : (
+              <div className="space-y-3">
               {area.points.map((point, index) => (
                 <div key={point.id} className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
                   <div className="flex items-center justify-between gap-2">
@@ -245,8 +260,9 @@ export default function ShootingAreaControls({
                   </div>
                 </div>
               ))}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
 
           <button
             type="button"

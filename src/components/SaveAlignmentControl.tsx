@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import type { AstroObject, GeographicPoint } from '../types/astronomy';
 import type { MoonPhaseInfo } from '../lib/astronomy/lunarPhase';
 import { useSavedLocations } from '../lib/saved/savedState';
@@ -54,11 +53,9 @@ export default function SaveAlignmentControl({
   shootingLocationSnapshot = null
 }: SaveAlignmentControlProps) {
   const { addSavedAlignment, findSavedAlignmentByDedupeKey } = useSavedLocations();
-  const [justSaved, setJustSaved] = useState(false);
 
   const dedupeKey = savedAlignmentDedupeKey({ source, object, event, date, time, celestialAzimuth });
-  const existing = findSavedAlignmentByDedupeKey(dedupeKey);
-  const alreadySaved = existing !== null || justSaved;
+  const alreadySaved = findSavedAlignmentByDedupeKey(dedupeKey) !== null;
 
   function handleSave() {
     const input: SaveAlignmentInput = {
@@ -86,7 +83,6 @@ export default function SaveAlignmentControl({
       shootingLocationSnapshot: shootingLocationSnapshot ?? null
     };
     addSavedAlignment(input);
-    setJustSaved(true);
   }
 
   return (

@@ -16,9 +16,11 @@ import TolerancePicker from './TolerancePicker';
 import TimeFilterPicker from './TimeFilterPicker';
 import StateButton from './StateButton';
 import SaveAlignmentControl from './SaveAlignmentControl';
+import SaveAllAlignmentsControl from './SaveAllAlignmentsControl';
 import CalendarExportControl from './CalendarExportControl';
 import { useSavedLocations } from '../lib/saved/savedState';
 import { usePersistedState } from '../lib/storage/appState';
+import type { SaveAlignmentInput } from '../lib/saved/types';
 import type { TimeFilterOption } from '../lib/alignment/timeFilter';
 import type { CalendarAlignmentInfo } from '../lib/calendar/types';
 
@@ -359,6 +361,42 @@ export default function AlignmentFinder({
     };
   }
 
+  function candidateToSaveInput(candidate: AlignmentCandidate): SaveAlignmentInput {
+    const searched = lastSearchedInputs;
+    return {
+      source: 'finder',
+      object: searched?.object ?? object,
+      event: candidate.eventType,
+      date: candidate.localDate,
+      time: candidate.localTime,
+      timeZone: candidate.timeZone ?? null,
+      celestialAzimuth: candidate.object.azimuth,
+      targetBearing: candidate.target.bearing,
+      alignmentError: candidate.score,
+      toleranceDegrees: searched?.toleranceDegrees ?? null,
+      withinTolerance: candidate.alignment.withinTolerance,
+      moonPhase: candidate.moonPhase ?? null,
+      targetId: alignmentTargetId ?? null,
+      shootingSetupId: null,
+      observerSnapshot: searched
+        ? {
+            latitude: searched.observer.latitude,
+            longitude: searched.observer.longitude,
+            elevation: observer.elevation
+          }
+        : null,
+      targetSnapshot: searched
+        ? {
+            latitude: searched.target.latitude,
+            longitude: searched.target.longitude,
+            elevation: target.elevation
+          }
+        : null,
+      shootingPositionSnapshot: null,
+      shootingLocationSnapshot: null
+    };
+  }
+
   return (
     <div data-testid="finder-workspace" className="space-y-6">
       <LocationControls
@@ -575,11 +613,14 @@ export default function AlignmentFinder({
                 </p>
               )}
               {visibleResults !== null && visibleResults.length > 0 && (
-                <CalendarExportControl
-                  testId="finder-calendar-bulk"
-                  triggerLabel={'\u{1F4C5} Save All to Calendar'}
-                  events={visibleResults.map(candidateToCalendarInfo)}
-                />
+                <>
+                  <SaveAllAlignmentsControl inputs={visibleResults.map(candidateToSaveInput)} />
+                  <CalendarExportControl
+                    testId="finder-calendar-bulk"
+                    triggerLabel={'\u{1F4C5} Save All to Calendar'}
+                    events={visibleResults.map(candidateToCalendarInfo)}
+                  />
+                </>
               )}
             </div>
           </div>
