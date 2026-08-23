@@ -95,6 +95,9 @@ later review, also preserved between sessions.
 
 ### Start the app
 
+Go to https://benjaminosw.github.io/AstroAlign
+
+Alternatively for running locally on computer: 
 You need Node.js installed. From the project root:
 
 ```bash
