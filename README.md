@@ -1,115 +1,153 @@
 # AstroAlign
 
-AstroAlign is a small astronomy planning app for photographers.
+AstroAlign is a planning tool for photographers who want to capture a landmark
+with the Sun or Moon lined up behind it — for example, a full Moon setting
+directly behind a mountain, or the Sun rising behind a lighthouse.
 
-It helps you answer three questions:
+Instead of guessing dates and positions, you tell AstroAlign:
 
-- When is the Sun or Moon aligned with my target at a specific moment?
-- When does a Sun or Moon rise/set event line up with a target bearing across a date range?
-- Where could I stand to photograph a target when the Sun or Moon rises or sets behind it?
+- **Where you will stand** (the observer / camera position)
+- **What you want in the background** (the target, e.g. a mountain)
+- **When** you want to shoot
 
-## Main features
+The app then works out the geometry: where the Sun or Moon will be in the sky,
+which direction it sits relative to your target, and how close that is to a
+perfect line-up.
 
-### 1. Alignment Calculator
-Use this when you already know the camera location.
+## Key terms
+
+| Term | Meaning |
+| --- | --- |
+| Observer | Where your camera stands |
+| Target | The landmark you want to photograph (e.g. a peak or building) |
+| Bearing | Compass direction from one place to another (0° = north, 90° = east) |
+| Azimuth | Compass direction pointing at the Sun or Moon in the sky |
+| Alignment error | How far apart the bearing and azimuth are, in degrees. Lower = better |
+| Tolerance | The maximum alignment error you accept as a good enough shot |
+
+## Main tools
+
+The app has five tabs:
+
+### 1. Calculate alignment
+
+Use this when you already know where you will stand and when you want to shoot.
+
+Choose an observer location, a target location, the Sun or Moon, a date and
+time, and a tolerance.
+
+The app shows:
+
+- the target bearing from your position
+- the Sun/Moon azimuth at that moment
+- the difference between them, and whether it falls within your tolerance
+
+Tip: use the "Use sunrise/sunset/moonrise/moonset time" button to fill in the
+rise or set time for the chosen day.
+
+### 2. Find alignments
+
+Use this to search a range of dates for moments when a Sun/Moon rise or set
+lines up with your target direction.
+
+Choose an observer location, a target location, the Sun or Moon, a date range,
+a tolerance (labelled "Maximum azimuth difference"), and run the search.
+
+For Moon searches you can additionally filter by:
+
+- time of night (or a custom time window)
+- moon phase
+- a "Full Moon date window" that keeps only dates within ±1 day of an exact Full Moon
+
+Results are listed in date order with their local time, event type, and
+alignment error, and each result can be previewed on the map.
+
+### 3. Find shooting opportunities
+
+Use this when you know *what* you want to photograph but not yet *where to
+stand*.
 
 Choose:
 
-- observer location
-- target location
-- date and time
-- Sun or Moon
-- alignment tolerance
+- the target location
+- the Sun or Moon and whether to search sunrises/moonrises or sunsets/moonsets
+- a date range
+- a tolerance ("Maximum azimuth difference")
+- a **shooting area**: either a path (start point to end point, e.g. along a
+  trail or shoreline) or a list of individual points you add on the map
 
-The app calculates:
+For every matching rise/set event in the date range, the app works out which
+positions inside your shooting area would put the Sun or Moon behind the
+target, and lists the results in date order with the alignment error for each.
 
-- target bearing from the observer to the target
-- object azimuth
-- angular difference
-- whether the result is within tolerance
+### 4. Saved locations
 
-### 2. Find Alignments
-Use this to search a date range for good alignment moments.
+Targets, shooting locations, and combined setups (target + shooting area) that
+you save are kept here between sessions, so you do not have to re-enter
+coordinates. Open any saved item to load it back into the search tools.
 
-Choose:
+### 5. Saved alignments
 
-- observer location
-- target location
-- object (Sun or Moon)
-- date range
-- tolerance
-
-The app searches for rise/set events that line up with the target direction and shows the best matches.
-
-### 3. Find Shooting Opportunities
-Use this to find camera positions that could shoot a target when the Sun or Moon rises or sets in alignment with it.
-
-Choose:
-
-- target location
-- date
-- object
-- rise or set event
-- search radius
-- tolerance
-
-The app generates candidate positions around the target, ranks them by alignment quality, and shows them on a map.
-
-> This is geometric alignment only. It does not check roads, accessibility, trees, buildings, terrain, or legal access.
+Alignments you have calculated or found and explicitly saved are kept here for
+later review, also preserved between sessions.
 
 ## How to use the app
 
 ### Start the app
 
-From the project root:
+You need Node.js installed. From the project root:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Then open the local URL shown in the terminal.
+Then open the local URL shown in the terminal (usually http://localhost:3000).
 
-### Pick a mode
+### Pick locations
 
-Use the mode switcher in the app to choose:
+Every tool needs coordinates. You can provide them by:
 
-- Alignment Calculator
-- Find Alignments
-- Find Shooting Locations
+- typing latitude/longitude values directly
+- searching for a place or landmark by name (uses OpenStreetMap data)
+- clicking or dragging markers on the map
+
+Timezones are detected automatically from the coordinates, so all times are
+shown in local time of the location you entered.
 
 ### Example workflow
 
-1. Set the target coordinates.
-2. Select the Sun or Moon.
-3. Choose the date.
-4. Pick a time or rise/set event.
-5. Set the tolerance.
-6. Run the calculation or search.
-7. Review the map and result list.
+1. Open **Find shooting opportunities** and set the target (e.g. your mountain).
+2. Draw a shooting area on the map where you could realistically stand.
+3. Pick the Moon, "Set", and a date range around the next full Moon.
+4. Run the search and review the results on the map and in the list.
+5. Save the target and shooting area so you can come back to them later.
+6. Before heading out, verify access, terrain, and weather yourself.
 
 ## Understanding the result
 
-Each result includes:
+What you see depends on the tool:
 
-- latitude and longitude
-- distance from the target
-- bearing to the target
-- event azimuth
-- alignment error
-- whether it is within tolerance
+- **Calculate alignment**: target bearing, Sun/Moon azimuth, the angular
+  difference between them, plus details such as altitudes and target distance,
+  and a badge showing whether it is within tolerance.
+- **Find alignments**: one row per event with date, local time, event type,
+  azimuths, and alignment error.
+- **Find shooting opportunities**: one result per event and position, with the
+  date, local time, camera position, bearing to target, alignment error, and —
+  for Moon shots — the moon phase and illumination percentage.
 
-Lower error is better.
+In all cases lower alignment error means a more precise line-up.
 
 ## Commands
 
 ```bash
-npm install
-npm run dev
-npm run build
-npm run start
-npm test
-npm run lint
+npm install   # install dependencies
+npm run dev   # start the dev server
+npm run build # production build
+npm run start # serve the production build
+npm test      # run tests in watch mode
+npm run lint  # lint the code
 ```
 
 To run the test suite once without watch mode:
@@ -120,25 +158,32 @@ npx vitest run
 
 ## Important limitations
 
-- No terrain, obstruction, accessibility, or road analysis yet
-- No weather or visibility checks yet
+- No terrain, obstruction, accessibility, or road analysis
+- No weather or visibility checks
 - Results are planning aids, not guaranteed safe or legal shooting locations
-- The app is a geometry-first planning tool and should be used together with real-world site checks
+- Use the app together with real-world site checks before you travel
 
 ## Project structure
 
-- src/app — app entry and page layout
-- src/components — main UI screens and controls
-- src/lib/astronomy — Sun/Moon astronomy logic
-- src/lib/geometry — distance, bearing, and alignment math
-- src/lib/alignment — forward alignment searches
-- src/lib/reverseSearch — reverse shooting-location logic
-- src/lib/timezone — timezone and local time conversion
+- src/app — Next.js app entry and page layout
+- src/components — UI screens and controls
+- src/lib/astronomy — Sun/Moon position, rise/set, and lunar phase logic
+- src/lib/geometry — distance, bearing, altitude, and angular separation math
+- src/lib/alignment — instant-alignment calculation and rise/set alignment searches
+- src/lib/opportunities — shooting-area solver used by "Find shooting opportunities"
+- src/lib/reverseSearch — legacy candidate-generation logic (not wired into the UI)
+- src/lib/calendar — calendar export (.ics / Google Calendar links)
+- src/lib/geocoding — place search via OpenStreetMap/Nominatim
+- src/lib/map — MapLibre map configuration helpers
+- src/lib/saved — saved targets, shooting locations, setups, and alignments state
+- src/lib/storage — persisted app state and database layer
+- src/lib/timezone — timezone lookup and local time conversion
 - src/types — shared TypeScript types
 
 ## Notes
 
-- The app uses astronomy-engine for rise/set and position calculations.
-- Geographic calculations are based on proper bearing and distance logic.
-- Moon searches support a Full Moon +/- 1 day filter.
-- The map is meant to help visualize the geometry, not replace field assessment.
+- Rise/set and position calculations use [astronomy-engine](https://github.com/cosinekitty/astronomy).
+- Maps are rendered with MapLibre GL using OpenStreetMap tiles.
+- Moon searches support filtering by phase, time of night, and a Full Moon ±1 day window.
+- Rise/set alignment searches match by azimuth only; the calculator also compares altitude.
+- The map helps visualize geometry — it does not replace visiting the site.
