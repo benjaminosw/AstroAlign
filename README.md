@@ -41,7 +41,7 @@ Choose:
 
 The app searches for rise/set events that line up with the target direction and shows the best matches.
 
-### 3. Find Shooting Locations
+### 3. Find Shooting Opportunities
 Use this to find camera positions that could shoot a target when the Sun or Moon rises or sets in alignment with it.
 
 Choose:
