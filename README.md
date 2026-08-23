@@ -97,9 +97,9 @@ later review, also preserved between sessions.
 
 #### Go to https://benjaminosw.github.io/AstroAlign
 
-Alternatively for running locally on computer:
+Alternatively for running locally on computer, you need Node.js installed. 
 
-You need Node.js installed. From the project root:
+From the project root:
 
 ```bash
 npm install
