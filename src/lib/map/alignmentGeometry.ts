@@ -5,6 +5,9 @@ export interface GeoPoint {
   longitude: number;
 }
 
+/** Length of the reverse-alignment observer ray drawn on the map, in kilometres. */
+export const REVERSE_RAY_LENGTH_KM = 100;
+
 export function directionLengthKm(targetDistanceKm: number): number {
   if (!Number.isFinite(targetDistanceKm) || targetDistanceKm <= 0) {
     return 1;

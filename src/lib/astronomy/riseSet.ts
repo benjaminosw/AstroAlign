@@ -81,3 +81,23 @@ export function findRiseSetLocalTimes(
 
   return result;
 }
+
+export function findRiseSetEventOnLocalDate(
+  body: RiseSetObject,
+  observer: GeographicPoint,
+  type: RiseSetType,
+  date: string,
+  timeZone: string
+): RiseSetEvent | null {
+  const dayStartUtc = convertLocalTimeToUtc(date, '00:00:00', timeZone);
+  const event = findRiseSetEvent(body, observer, type, dayStartUtc, 2);
+
+  if (!event) {
+    return null;
+  }
+  if (formatLocalDateTimeFromUtc(event.instant, timeZone).date !== date) {
+    return null;
+  }
+
+  return event;
+}

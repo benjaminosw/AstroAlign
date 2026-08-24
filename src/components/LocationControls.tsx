@@ -39,7 +39,7 @@ interface PlaceSummaryProps {
   icon: string;
 }
 
-function PlaceSummary({ place, coordinatesAdjusted, clearLabel, onClear, icon }: PlaceSummaryProps) {
+export function PlaceSummary({ place, coordinatesAdjusted, clearLabel, onClear, icon }: PlaceSummaryProps) {
   const subtitle = place.formattedAddress ?? ([place.locality, place.country].filter(Boolean).join(', ') || null);
   return (
     <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-700/80 bg-slate-900/70 px-3 py-2">

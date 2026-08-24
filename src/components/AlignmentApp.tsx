@@ -9,6 +9,7 @@ import { validateCoordinates as validateCoordinateValues } from '../lib/timezone
 import AlignmentCalculator from './AlignmentCalculator';
 import AlignmentFinder from './AlignmentFinder';
 import FindShootingOpportunities from './FindShootingOpportunities';
+import ReverseAlignment from './ReverseAlignment';
 import SavedLocationsPage from './SavedLocationsPage';
 import SavedAlignmentsPage from './SavedAlignmentsPage';
 import { ShootingStateProvider, useShootingState } from '../lib/opportunities/shootingState';
@@ -17,7 +18,7 @@ import { AppStateProvider, useAppState, usePersistedState } from '../lib/storage
 import type { SavedSetup, SavedTarget } from '../lib/saved/types';
 import { geometryToShootingArea, targetToLandmark } from '../lib/saved/types';
 
-type TabId = 'calculate' | 'find' | 'shooting' | 'saved' | 'alignments';
+type TabId = 'calculate' | 'find' | 'shooting' | 'reverse' | 'saved' | 'alignments';
 
 const TABS: Array<{ id: TabId; label: string; description: string }> = [
   {
@@ -34,6 +35,11 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
     id: 'shooting',
     label: 'Find shooting opportunities',
     description: 'Search across a date range and a shooting area for Sun/Moon rise and set events that align with your target.'
+  },
+  {
+    id: 'reverse',
+    label: 'Reverse alignment',
+    description: 'Given a target and a Sun/Moon rise/set event, find the direction from the target where an observer would have stood.'
   },
   {
     id: 'saved',
@@ -199,28 +205,24 @@ function AlignmentAppContent() {
       <div className="min-w-0">
         <div className="flex min-w-0">
           <div
-            className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="inline-flex max-w-full flex-wrap rounded-2xl border border-slate-800 bg-slate-900 p-1"
             role="tablist"
             aria-label="Alignment tools"
           >
-            <div className="w-fit rounded-2xl border border-slate-800 bg-slate-900 p-1">
-              <div className="flex w-max">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:px-6 ${
-                      activeTab === tab.id ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:px-5 ${
+                  activeTab === tab.id ? 'bg-sky-500 text-slate-950' : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
         <p className="mt-3 max-w-md text-sm text-slate-400">{activeTabInfo.description}</p>
@@ -239,6 +241,18 @@ function AlignmentAppContent() {
           onSelectLandmark={handleSelectLandmark}
           onClearLandmark={handleClearLandmark}
           onGoToSavedLocations={() => setActiveTab('saved')}
+        />
+      )}
+      {activeTab === 'reverse' && (
+        <ReverseAlignment
+          target={target}
+          landmark={targetLandmark}
+          targetCoordinateError={targetCoordinateError}
+          timeZone={targetTimeZone}
+          timeZoneStatus={targetTimeZoneStatus}
+          onTargetChange={handleTargetChange}
+          onSelectLandmark={handleSelectLandmark}
+          onClearLandmark={handleClearLandmark}
         />
       )}
       {activeTab === 'saved' && (
