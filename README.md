@@ -27,7 +27,7 @@ perfect line-up.
 
 ## Main tools
 
-The app has five tabs:
+The app has six tabs:
 
 ### 1. Calculate alignment
 
@@ -80,13 +80,33 @@ For every matching rise/set event in the date range, the app works out which
 positions inside your shooting area would put the Sun or Moon behind the
 target, and lists the results in date order with the alignment error for each.
 
-### 4. Saved locations
+### 4. Reverse alignment
+
+Use this when you have a target but no observer location yet — for example,
+you want to know from which direction a Sun/Moon rise or set could be seen
+lining up with your target.
+
+Choose the target location, the Sun or Moon, whether you want the rise or the
+set, and a date. Rise/set times are calculated for the target itself, so no
+observer location is needed.
+
+The app works out the compass direction (azimuth) of the Sun or Moon at that
+moment, treats it as the bearing from camera to target, and draws a ray on the
+map from the target in the opposite direction — along that ray is where an
+observer could have stood to capture the alignment.
+
+Results update automatically when you change the target, object, event, or
+date. Remember that the result is a direction, not a unique shooting location:
+any observer along the ray could potentially produce the alignment, subject to
+terrain and visibility.
+
+### 5. Saved locations
 
 Targets, shooting locations, and combined setups (target + shooting area) that
 you save are kept here between sessions, so you do not have to re-enter
 coordinates. Open any saved item to load it back into the search tools.
 
-### 5. Saved alignments
+### 6. Saved alignments
 
 Alignments you have calculated or found and explicitly saved are kept here for
 later review, also preserved between sessions.
@@ -140,6 +160,9 @@ What you see depends on the tool:
 - **Find shooting opportunities**: one result per event and position, with the
   date, local time, camera position, bearing to target, alignment error, and —
   for Moon shots — the moon phase and illumination percentage.
+- **Reverse alignment**: the object azimuth at the target's rise/set event, the
+  bearing from observer to target, and the opposite bearing from the target
+  towards where an observer could have stood (drawn as a ray on the map).
 
 In all cases lower alignment error means a more precise line-up.
 
@@ -173,7 +196,7 @@ npx vitest run
 - src/components — UI screens and controls
 - src/lib/astronomy — Sun/Moon position, rise/set, and lunar phase logic
 - src/lib/geometry — distance, bearing, altitude, and angular separation math
-- src/lib/alignment — instant-alignment calculation and rise/set alignment searches
+- src/lib/alignment — instant-alignment calculation, rise/set alignment searches, and reverse-alignment calculation
 - src/lib/opportunities — shooting-area solver used by "Find shooting opportunities"
 - src/lib/reverseSearch — legacy candidate-generation logic (not wired into the UI)
 - src/lib/calendar — calendar export (.ics / Google Calendar links)
