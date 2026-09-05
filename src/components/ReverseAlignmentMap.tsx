@@ -12,9 +12,11 @@ import type {
 import type { AstroObject } from '../types/astronomy';
 import { getMapStyle } from '../lib/map/mapConfig';
 import { directionEndpoint, REVERSE_RAY_LENGTH_KM } from '../lib/map/alignmentGeometry';
-import { buildPinElement } from '../lib/map/markers';
+import { buildCameraElement, buildPinElement } from '../lib/map/markers';
+import { greatCircleDistanceKm } from '../lib/geometry/distance';
 
 const TARGET_PIN_COLOR = '#f59e0b';
+const SHOOTING_LOCATION_COLOR = '#22c55e';
 
 const OBJECT_SYMBOL: Record<AstroObject, string> = {
   Sun: '☀',
@@ -33,6 +35,8 @@ interface ReverseAlignmentMapProps {
   targetName?: string | null;
   onTargetMove: (_latitude: number, _longitude: number) => void;
   overlay?: ReverseAlignmentOverlay | null;
+  shootingLocation?: { latitude: number; longitude: number } | null;
+  onShootingLocationMove?: (_latitude: number, _longitude: number) => void;
   flyToId?: number;
   className?: string;
 }
@@ -91,6 +95,31 @@ function buildTargetPopup(name: string | null, latitude: number, longitude: numb
   return container;
 }
 
+function buildShootingLocationPopup(
+  latitude: number,
+  longitude: number,
+  distanceKm: number | null
+): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'text-xs';
+  const title = document.createElement('p');
+  title.className = 'font-semibold';
+  title.textContent = 'Shooting location';
+  container.appendChild(title);
+  if (distanceKm !== null) {
+    const distanceLine = document.createElement('p');
+    distanceLine.textContent = `Distance from target: ${distanceKm.toFixed(2)} km`;
+    container.appendChild(distanceLine);
+  }
+  const latitudeLine = document.createElement('p');
+  latitudeLine.textContent = `Latitude: ${latitude.toFixed(6)}`;
+  const longitudeLine = document.createElement('p');
+  longitudeLine.textContent = `Longitude: ${longitude.toFixed(6)}`;
+  container.appendChild(latitudeLine);
+  container.appendChild(longitudeLine);
+  return container;
+}
+
 const OBSERVER_RAY_PAINT = {
   'line-color': '#34d399',
   'line-width': 3
@@ -107,6 +136,8 @@ export default function ReverseAlignmentMap({
   targetName = null,
   onTargetMove,
   overlay = null,
+  shootingLocation = null,
+  onShootingLocationMove = () => {},
   flyToId = 0,
   className = 'h-[380px] lg:h-[520px]'
 }: ReverseAlignmentMapProps) {
@@ -115,13 +146,20 @@ export default function ReverseAlignmentMap({
   const targetMarkerRef = useRef<MapLibreMarker | null>(null);
   const objectMarkerRef = useRef<MapLibreMarker | null>(null);
   const objectElementRef = useRef<HTMLElement | null>(null);
+  const shootingLocationMarkerRef = useRef<MapLibreMarker | null>(null);
   const [ready, setReady] = useState(false);
 
   const onTargetMoveRef = useRef(onTargetMove);
   onTargetMoveRef.current = onTargetMove;
 
+  const onShootingLocationMoveRef = useRef(onShootingLocationMove);
+  onShootingLocationMoveRef.current = onShootingLocationMove;
+
   const overlayRef = useRef(overlay);
   overlayRef.current = overlay;
+
+  const shootingLocationRef = useRef(shootingLocation);
+  shootingLocationRef.current = shootingLocation;
 
   const rayEndpoint = useMemo(
     () =>
@@ -187,6 +225,49 @@ export default function ReverseAlignmentMap({
     }
   }
 
+  function removeShootingLocationMarker() {
+    shootingLocationMarkerRef.current?.remove();
+    shootingLocationMarkerRef.current = null;
+  }
+
+  function syncShootingLocationMarker(map: MapLibreMap) {
+    const location = shootingLocationRef.current;
+    const existing = shootingLocationMarkerRef.current;
+    if (!location) {
+      removeShootingLocationMarker();
+      return;
+    }
+    const distanceKm = greatCircleDistanceKm(
+      target.latitude,
+      target.longitude,
+      location.latitude,
+      location.longitude
+    );
+    const popupContent = () => buildShootingLocationPopup(location.latitude, location.longitude, distanceKm);
+    if (!existing) {
+      const element = buildCameraElement(SHOOTING_LOCATION_COLOR, 1);
+      element.setAttribute('aria-label', 'Shooting location');
+      const marker = new maplibregl.Marker({ element, draggable: true, anchor: 'bottom' })
+        .setLngLat([location.longitude, location.latitude])
+        .setPopup(new maplibregl.Popup({ closeButton: false, offset: 14 }).setDOMContent(popupContent()))
+        .addTo(map);
+      marker.on('drag', () => {
+        const position = marker.getLngLat();
+        onShootingLocationMoveRef.current(position.lat, position.lng);
+      });
+      shootingLocationMarkerRef.current = marker;
+    } else {
+      const position = existing.getLngLat();
+      if (
+        Math.abs(position.lat - location.latitude) > 1e-9 ||
+        Math.abs(position.lng - location.longitude) > 1e-9
+      ) {
+        existing.setLngLat([location.longitude, location.latitude]);
+      }
+      existing.getPopup?.()?.setDOMContent(popupContent());
+    }
+  }
+
   function removeOverlay(map: MapLibreMap) {
     for (const layerId of ['reverse-ray-line', 'reverse-object-line']) {
       if (map.getLayer(layerId)) {
@@ -201,6 +282,7 @@ export default function ReverseAlignmentMap({
     objectMarkerRef.current?.remove();
     objectMarkerRef.current = null;
     objectElementRef.current = null;
+    removeShootingLocationMarker();
   }
 
   useEffect(() => {
@@ -265,6 +347,7 @@ export default function ReverseAlignmentMap({
         objectElementRef.current = objectElement;
       }
 
+      syncShootingLocationMarker(map);
       fitBoundsToTarget();
       setReady(true);
     });
@@ -280,6 +363,7 @@ export default function ReverseAlignmentMap({
       targetMarkerRef.current = null;
       objectMarkerRef.current = null;
       objectElementRef.current = null;
+      shootingLocationMarkerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -343,8 +427,10 @@ export default function ReverseAlignmentMap({
         }
       }
     }
+
+    syncShootingLocationMarker(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, targetName, overlay, rayEndpoint, objectEndpoint, ready]);
+  }, [target, targetName, overlay, rayEndpoint, objectEndpoint, shootingLocation, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

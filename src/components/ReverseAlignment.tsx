@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { AstroObject, GeographicPoint } from '../types/astronomy';
 import { ASTRO_OBJECT } from '../types/astronomy';
@@ -11,12 +11,20 @@ import type { ReverseAlignmentResult } from '../lib/alignment/reverseAlignment';
 import { getMoonPhase } from '../lib/astronomy/lunarPhase';
 import { getLocalDateTimeForTimeZone } from '../lib/timezone/getLocalDateTimeForTimeZone';
 import { formatResultDate } from '../lib/utils/formatResultDate';
+import { directionEndpoint, REVERSE_RAY_LENGTH_KM } from '../lib/map/alignmentGeometry';
+import { projectPointOntoRay } from '../lib/geometry/rayProjection';
+import type { ShootingArea } from '../lib/opportunities/types';
 import LandmarkSearch from './LandmarkSearch';
 import LocationEditor from './LocationEditor';
+import SaveSetupControl from './SaveSetupControl';
+import SaveShootingLocationControl from './SaveShootingLocationControl';
 import { PlaceSummary } from './LocationControls';
 import { usePersistedState } from '../lib/storage/appState';
 
 const AUTO_CALC_DEBOUNCE_MS = 200;
+
+const DEFAULT_SHOOTING_DISTANCE_KM = 5;
+const MIN_SHOOTING_DISTANCE_KM = 0.1;
 
 const ReverseAlignmentMap = dynamic(() => import('./ReverseAlignmentMap'), {
   ssr: false,
@@ -78,6 +86,7 @@ interface ReverseAlignmentProps {
   onTargetChange: (_field: keyof GeographicPoint, _value: string) => void;
   onSelectLandmark?: (_landmark: SelectedLandmark) => void;
   onClearLandmark?: () => void;
+  onGoToSavedLocations?: () => void;
 }
 
 function eventLabel(object: AstroObject, eventType: RiseSetType): string {
@@ -92,11 +101,16 @@ export default function ReverseAlignment({
   timeZoneStatus,
   onTargetChange,
   onSelectLandmark = () => {},
-  onClearLandmark = () => {}
+  onClearLandmark = () => {},
+  onGoToSavedLocations = () => {}
 }: ReverseAlignmentProps) {
   const [object, setObject] = usePersistedState<AstroObject>('reverse.object', ASTRO_OBJECT.Sun);
   const [eventType, setEventType] = usePersistedState<RiseSetType>('reverse.eventType', 'rise');
   const [date, setDate] = usePersistedState<string | null>('reverse.date', null);
+  const [shootingDistanceKm, setShootingDistanceKm] = usePersistedState<number>(
+    'reverse.shootingDistanceKm',
+    DEFAULT_SHOOTING_DISTANCE_KM
+  );
   const [snapshot, setSnapshot] = useState<ReverseAlignmentResult | null>(null);
   const [locationInputError, setLocationInputError] = useState(false);
   const [flyToId, setFlyToId] = useState(0);
@@ -181,6 +195,44 @@ export default function ReverseAlignment({
     onTargetChange('longitude', String(longitude));
   }
 
+  const shootingLocation = useMemo(() => {
+    if (!snapshot) {
+      return null;
+    }
+    return directionEndpoint(target, snapshot.observerDirectionFromTarget, shootingDistanceKm);
+  }, [snapshot, target, shootingDistanceKm]);
+
+  function handleShootingLocationMove(latitude: number, longitude: number) {
+    if (!snapshot) {
+      return;
+    }
+    const projection = projectPointOntoRay(
+      target,
+      snapshot.observerDirectionFromTarget,
+      { latitude, longitude },
+      MIN_SHOOTING_DISTANCE_KM,
+      REVERSE_RAY_LENGTH_KM
+    );
+    setShootingDistanceKm(Math.round(projection.distanceKm * 100) / 100);
+  }
+
+  const observerArea = useMemo<ShootingArea | null>(() => {
+    if (!shootingLocation) {
+      return null;
+    }
+    return {
+      type: 'points',
+      points: [
+        {
+          id: 'reverse-shooting-location',
+          name: 'Shooting location',
+          latitude: shootingLocation.latitude,
+          longitude: shootingLocation.longitude
+        }
+      ]
+    };
+  }, [shootingLocation]);
+
   const moonPhase =
     snapshot && snapshot.object === ASTRO_OBJECT.Moon ? getMoonPhase(new Date(snapshot.utcInstant)) : null;
 
@@ -258,9 +310,88 @@ export default function ReverseAlignment({
               }
             : null
         }
+        shootingLocation={shootingLocation}
+        onShootingLocationMove={handleShootingLocationMove}
         flyToId={flyToId}
         className="h-[380px] lg:h-[520px]"
       />
+
+      {snapshot && observerArea && shootingLocation && (
+        <section
+          data-testid="reverse-shooting-location-card"
+          className="rounded-3xl border border-emerald-800/60 bg-slate-950/70 p-5"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-300">Shooting location</h2>
+              <p className="mt-1 max-w-md text-sm text-slate-400">
+                Any observer along the green{' '}
+                <span className="font-semibold text-emerald-300">Target → Possible observer</span> path produces this
+                alignment. Slide along the path, or drag the 📍 marker on the map, to choose a spot, then save it.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <SaveShootingLocationControl area={observerArea} />
+              <SaveSetupControl
+                target={target}
+                landmarkName={landmark?.name ?? null}
+                area={observerArea}
+                onGoToSavedLocations={onGoToSavedLocations}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label htmlFor="reverse-shooting-distance" className="text-sm text-slate-300">
+                Distance from target
+              </label>
+              <input
+                id="reverse-shooting-distance"
+                type="range"
+                min={MIN_SHOOTING_DISTANCE_KM}
+                max={REVERSE_RAY_LENGTH_KM}
+                step="0.1"
+                value={shootingDistanceKm}
+                onChange={(event) => setShootingDistanceKm(Number(event.target.value))}
+                className="mt-3 w-full accent-emerald-400"
+                aria-label="Shooting location distance from target"
+              />
+            </div>
+            <div>
+              <label htmlFor="reverse-shooting-distance-input" className="text-sm text-slate-300">
+                Distance (km)
+              </label>
+              <input
+                id="reverse-shooting-distance-input"
+                type="number"
+                min={MIN_SHOOTING_DISTANCE_KM}
+                max={REVERSE_RAY_LENGTH_KM}
+                step="0.1"
+                value={shootingDistanceKm}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (Number.isFinite(value)) {
+                    setShootingDistanceKm(
+                      Math.min(REVERSE_RAY_LENGTH_KM, Math.max(MIN_SHOOTING_DISTANCE_KM, value))
+                    );
+                  }
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
+            </div>
+            <div>
+              <p className="text-sm text-slate-300">Selected coordinates</p>
+              <p
+                data-testid="reverse-shooting-coords"
+                className="mt-2 truncate rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm tabular-nums text-slate-100"
+              >
+                {shootingLocation.latitude.toFixed(6)}, {shootingLocation.longitude.toFixed(6)}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div data-testid="reverse-columns" className="grid items-start gap-6 lg:grid-cols-2">
         <section data-testid="reverse-settings-card" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">

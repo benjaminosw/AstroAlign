@@ -253,6 +253,7 @@ function AlignmentAppContent() {
           onTargetChange={handleTargetChange}
           onSelectLandmark={handleSelectLandmark}
           onClearLandmark={handleClearLandmark}
+          onGoToSavedLocations={() => setActiveTab('saved')}
         />
       )}
       {activeTab === 'saved' && (

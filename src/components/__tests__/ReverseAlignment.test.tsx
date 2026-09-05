@@ -2,6 +2,7 @@ import { expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import ReverseAlignment from '../ReverseAlignment';
+import { SavedLocationsProvider } from '../../lib/saved/savedState';
 import { DEFAULT_TARGET } from '../../lib/constants/defaultCoordinates';
 
 vi.mock('../ReverseAlignmentMap', () => ({
@@ -9,11 +10,15 @@ vi.mock('../ReverseAlignmentMap', () => ({
   default: ({
     target,
     overlay,
-    onTargetMove
+    onTargetMove,
+    shootingLocation,
+    onShootingLocationMove
   }: {
     target: { latitude: number; longitude: number };
     overlay: { objectAzimuth: number; shootingBearing: number; observerDirectionFromTarget: number } | null;
     onTargetMove: (_lat: number, _lon: number) => void;
+    shootingLocation: { latitude: number; longitude: number } | null;
+    onShootingLocationMove: (_lat: number, _lon: number) => void;
   }) => (
     <div data-testid="reverse-map-mock">
       <span data-testid="reverse-map-coords">
@@ -24,8 +29,19 @@ vi.mock('../ReverseAlignmentMap', () => ({
           {overlay.objectAzimuth}|{overlay.shootingBearing}|{overlay.observerDirectionFromTarget}
         </span>
       )}
+      {shootingLocation && (
+        <span data-testid="reverse-map-shooting-location">
+          {shootingLocation.latitude}|{shootingLocation.longitude}|{overlay?.observerDirectionFromTarget}
+        </span>
+      )}
       <button data-testid="simulate-marker-drag" onClick={() => onTargetMove(1.55, 104.01)}>
         drag marker
+      </button>
+      <button
+        data-testid="simulate-shooting-drag"
+        onClick={() => onShootingLocationMove(1.3442815866686566, 103.77101007696956)}
+      >
+        drag shooting location
       </button>
     </div>
   )
@@ -42,6 +58,7 @@ vi.mock('../../lib/geocoding/index', () => ({
 
 import { calculateReverseAlignment } from '../../lib/alignment/reverseAlignment';
 import type { ReverseAlignmentResult } from '../../lib/alignment/reverseAlignment';
+import { destinationPoint } from '../../lib/geometry/destinationPoint';
 
 function makeResult(overrides: Partial<ReverseAlignmentResult> = {}): ReverseAlignmentResult {
   return {
@@ -63,14 +80,16 @@ function Harness() {
   const [target, setTarget] = useState(DEFAULT_TARGET);
 
   return (
-    <ReverseAlignment
-      target={target}
-      landmark={null}
-      targetCoordinateError={null}
-      timeZone="Asia/Singapore"
-      timeZoneStatus="idle"
-      onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
-    />
+    <SavedLocationsProvider>
+      <ReverseAlignment
+        target={target}
+        landmark={null}
+        targetCoordinateError={null}
+        timeZone="Asia/Singapore"
+        timeZoneStatus="idle"
+        onTargetChange={(field, value) => setTarget((prev) => ({ ...prev, [field]: Number(value) }))}
+      />
+    </SavedLocationsProvider>
   );
 }
 
@@ -298,4 +317,85 @@ it('keeps the previous result and explains when an automatic update finds no eve
   expect(screen.getByTestId('reverse-auto-error').textContent).toContain('No Sunrise occurs');
   expect(screen.getByText(/Previous result shown below/i)).toBeTruthy();
   expect(screen.getByTestId('reverse-map-overlay')).toBeTruthy();
+});
+
+it('shows a shooting-location picker and save controls once a result is available', async () => {
+  vi.mocked(calculateReverseAlignment).mockReturnValue(makeResult());
+  render(<Harness />);
+  await flushDynamicImport();
+
+  expect(screen.queryByTestId('reverse-shooting-location-card')).toBeNull();
+
+  await advanceAutoCalculation();
+
+  expect(screen.getByTestId('reverse-shooting-location-card')).toBeTruthy();
+  expect(screen.getByLabelText('Shooting location distance from target')).toBeTruthy();
+  expect(screen.getByLabelText('Distance (km)')).toBeTruthy();
+  expect(screen.getByTestId('save-shooting-location-button')).toBeTruthy();
+  expect(screen.getByTestId('save-setup-button')).toBeTruthy();
+  expect(screen.getByTestId('reverse-map-shooting-location').textContent).toContain('303.42');
+});
+
+it('hides the shooting-location picker when no event occurs on the date', async () => {
+  vi.mocked(calculateReverseAlignment).mockReturnValue(null);
+  render(<Harness />);
+  await flushDynamicImport();
+  await advanceAutoCalculation();
+
+  expect(screen.queryByTestId('reverse-shooting-location-card')).toBeNull();
+});
+
+it('updates the shooting-location distance when the map marker is dragged along the path', async () => {
+  vi.mocked(calculateReverseAlignment).mockReturnValue(makeResult());
+  render(<Harness />);
+  await flushDynamicImport();
+  await advanceAutoCalculation();
+
+  expect((screen.getByLabelText('Distance (km)') as HTMLInputElement).value).toBe('5');
+
+  fireEvent.click(screen.getByTestId('simulate-shooting-drag'));
+
+  const afterDrag = (screen.getByLabelText('Distance (km)') as HTMLInputElement).value;
+  expect(Number(afterDrag)).toBeGreaterThan(11);
+  expect(Number(afterDrag)).toBeLessThan(12.5);
+  expect(screen.getByTestId('reverse-shooting-coords').textContent).toMatch(/^-?\d+\.\d{6}, -?\d+\.\d{6}$/);
+});
+
+it('moves the marker and coordinates when the distance input changes', async () => {
+  vi.mocked(calculateReverseAlignment).mockReturnValue(makeResult());
+  render(<Harness />);
+  await flushDynamicImport();
+  await advanceAutoCalculation();
+
+  fireEvent.change(screen.getByLabelText('Distance (km)'), { target: { value: '20' } });
+
+  const markerText = screen.getByTestId('reverse-map-shooting-location').textContent ?? '';
+  const [latitude, longitude, bearing] = markerText.split('|');
+  expect(bearing).toBe('303.42');
+  const expected = destinationPoint(DEFAULT_TARGET.latitude, DEFAULT_TARGET.longitude, 303.42, 20);
+  expect(Number(latitude)).toBeCloseTo(expected.latitude, 5);
+  expect(Number(longitude)).toBeCloseTo(expected.longitude, 5);
+});
+
+it('saves the selected shooting location along the green path', async () => {
+  vi.mocked(calculateReverseAlignment).mockReturnValue(makeResult());
+  render(<Harness />);
+  await flushDynamicImport();
+  await advanceAutoCalculation();
+
+  expect(screen.getByTestId('save-shooting-location-button')).toBeTruthy();
+  fireEvent.click(screen.getByTestId('save-shooting-location-button'));
+
+  expect(screen.getByTestId('saved-shooting-location-button').textContent).toContain('Saved');
+});
+
+it('clamps the distance input to the green path range', async () => {
+  vi.mocked(calculateReverseAlignment).mockReturnValue(makeResult());
+  render(<Harness />);
+  await flushDynamicImport();
+  await advanceAutoCalculation();
+
+  const input = screen.getByLabelText('Distance (km)') as HTMLInputElement;
+  fireEvent.change(input, { target: { value: '500' } });
+  expect(input.value).toBe('100');
 });
