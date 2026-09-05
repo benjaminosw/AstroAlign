@@ -173,10 +173,6 @@ export default function TimePicker({ value, onChange, label }: { value: string; 
           className="mt-2 w-full rounded-xl border border-sky-400 bg-slate-900 px-3 py-2 text-center text-2xl font-semibold tabular-nums text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
         />
       )}
-
-      <p className="mt-2 text-xs text-slate-500">
-        Local civil time at the observer&apos;s location. Use the arrows, scroll, or click to type.
-      </p>
     </div>
   );
 }

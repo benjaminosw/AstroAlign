@@ -3,6 +3,8 @@
 import type { AstroObject, GeographicPoint } from '../types/astronomy';
 import type { ShootingOpportunity } from '../lib/opportunities/types';
 import { formatResultDate } from '../lib/utils/formatResultDate';
+import { greatCircleDistanceKm } from '../lib/geometry/distance';
+import { targetAltitude } from '../lib/geometry/altitude';
 import SaveAlignmentControl from './SaveAlignmentControl';
 import SaveAllAlignmentsControl from './SaveAllAlignmentsControl';
 import CalendarExportControl from './CalendarExportControl';
@@ -39,6 +41,25 @@ function positionHint(opportunity: ShootingOpportunity): string {
     return `Valid zone ${opportunity.position.zoneStartKm.toFixed(2)}–${opportunity.position.zoneEndKm.toFixed(2)} km from start`;
   }
   return 'Point on shooting area';
+}
+
+function opportunityTargetInfo(
+  opportunity: ShootingOpportunity,
+  currentTarget: GeographicPoint | null
+): { distanceKm: number; altitudeDeg: number } | null {
+  if (!currentTarget) {
+    return null;
+  }
+  const distanceKm = greatCircleDistanceKm(
+    opportunity.position.latitude,
+    opportunity.position.longitude,
+    currentTarget.latitude,
+    currentTarget.longitude
+  );
+  return {
+    distanceKm,
+    altitudeDeg: targetAltitude({ elevation: 0 }, { elevation: currentTarget.elevation }, distanceKm)
+  };
 }
 
 export default function ShootingOpportunityResults({
@@ -100,6 +121,8 @@ export default function ShootingOpportunityResults({
       alignmentError: opportunity.position.alignmentError,
       toleranceDegrees,
       withinTolerance: opportunity.position.alignmentError <= toleranceDegrees,
+      objectAltitude: opportunity.objectAltitude,
+      targetAltitude: opportunityTargetInfo(opportunity, target)?.altitudeDeg ?? null,
       moonPhase: opportunity.moonPhase ?? null,
       targetId: targetId ?? null,
       shootingSetupId: shootingSetupId ?? null,
@@ -179,6 +202,8 @@ export default function ShootingOpportunityResults({
                 alignmentError={selectedOpportunity.position.alignmentError}
                 toleranceDegrees={toleranceDegrees}
                 withinTolerance={selectedOpportunity.position.alignmentError <= toleranceDegrees}
+                objectAltitude={selectedOpportunity.objectAltitude}
+                targetAltitude={opportunityTargetInfo(selectedOpportunity, target)?.altitudeDeg ?? null}
                 moonPhase={selectedOpportunity.moonPhase ?? null}
                 targetId={targetId}
                 shootingSetupId={shootingSetupId}
@@ -204,6 +229,57 @@ export default function ShootingOpportunityResults({
               />
             </div>
           </div>
+
+          <details data-testid="opportunity-details" className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/50">
+            <summary className="flex cursor-pointer items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white">
+              <span>Details</span>
+              <span aria-hidden="true">▾</span>
+            </summary>
+            <div className="grid gap-x-6 gap-y-3 border-t border-slate-800 px-4 py-4 text-sm sm:grid-cols-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-400">Tolerance</span>
+                <span className="tabular-nums text-slate-200">{toleranceDegrees}°</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-400">Alignment error</span>
+                <span className="tabular-nums text-slate-200">
+                  {selectedOpportunity.position.alignmentError.toFixed(2)}°
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-400">{selectedOpportunity.object} altitude</span>
+                <span className="tabular-nums text-slate-200">
+                  {selectedOpportunity.objectAltitude.toFixed(2)}°
+                </span>
+              </div>
+              {opportunityTargetInfo(selectedOpportunity, target) && (
+                <>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Altitude difference</span>
+                    <span className="tabular-nums text-slate-200">
+                      {Math.abs(
+                        selectedOpportunity.objectAltitude -
+                          (opportunityTargetInfo(selectedOpportunity, target)?.altitudeDeg ?? 0)
+                      ).toFixed(2)}
+                      °
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Target altitude</span>
+                    <span className="tabular-nums text-slate-200">
+                      {opportunityTargetInfo(selectedOpportunity, target)?.altitudeDeg.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Target distance</span>
+                    <span className="tabular-nums text-slate-200">
+                      {opportunityTargetInfo(selectedOpportunity, target)?.distanceKm.toFixed(2)} km
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </details>
         </div>
       )}
 

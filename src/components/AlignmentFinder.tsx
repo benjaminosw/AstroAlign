@@ -375,6 +375,8 @@ export default function AlignmentFinder({
       alignmentError: candidate.score,
       toleranceDegrees: searched?.toleranceDegrees ?? null,
       withinTolerance: candidate.alignment.withinTolerance,
+      objectAltitude: candidate.object.altitude,
+      targetAltitude: candidate.target.altitude,
       moonPhase: candidate.moonPhase ?? null,
       targetId: alignmentTargetId ?? null,
       shootingSetupId: null,
@@ -653,6 +655,8 @@ export default function AlignmentFinder({
                     alignmentError={selectedCandidate.score}
                     toleranceDegrees={lastSearchedInputs.toleranceDegrees}
                     withinTolerance={selectedCandidate.alignment.withinTolerance}
+                    objectAltitude={selectedCandidate.object.altitude}
+                    targetAltitude={selectedCandidate.target.altitude}
                     moonPhase={selectedCandidate.moonPhase ?? null}
                     targetId={alignmentTargetId}
                     observer={observer}
@@ -665,6 +669,55 @@ export default function AlignmentFinder({
                   />
                 </div>
               </div>
+
+              <details data-testid="finder-details" className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/50">
+                <summary className="flex cursor-pointer items-center justify-between px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:text-white">
+                  <span>Details</span>
+                  <span aria-hidden="true">▾</span>
+                </summary>
+                <div className="grid gap-x-6 gap-y-3 border-t border-slate-800 px-4 py-4 text-sm sm:grid-cols-2">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Tolerance</span>
+                    <span className="tabular-nums text-slate-200">{lastSearchedInputs.toleranceDegrees}°</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Angular separation</span>
+                    <span className="tabular-nums text-slate-200">
+                      {selectedCandidate.alignment.angularSeparation.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Azimuth difference</span>
+                    <span className="tabular-nums text-slate-200">
+                      {selectedCandidate.alignment.azimuthDelta.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Altitude difference</span>
+                    <span className="tabular-nums text-slate-200">
+                      {selectedCandidate.alignment.altitudeDelta.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">{lastSearchedInputs.object} altitude</span>
+                    <span className="tabular-nums text-slate-200">
+                      {selectedCandidate.object.altitude.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Target altitude</span>
+                    <span className="tabular-nums text-slate-200">
+                      {selectedCandidate.target.altitude.toFixed(2)}°
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-slate-400">Target distance</span>
+                    <span className="tabular-nums text-slate-200">
+                      {selectedCandidate.target.distanceKm.toFixed(2)} km
+                    </span>
+                  </div>
+                </div>
+              </details>
             </div>
           )}
 

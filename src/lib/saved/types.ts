@@ -94,6 +94,8 @@ export interface SavedAlignment {
   alignmentError: number;
   toleranceDegrees?: number | null;
   withinTolerance?: boolean | null;
+  objectAltitude?: number | null;
+  targetAltitude?: number | null;
   moonPhase?: MoonPhaseInfo | null;
   observerSnapshot?: SavedAlignmentSnapshotPoint | null;
   targetSnapshot?: SavedAlignmentSnapshotPoint | null;
@@ -117,6 +119,8 @@ export interface SaveAlignmentInput {
   alignmentError: number;
   toleranceDegrees?: number | null;
   withinTolerance?: boolean | null;
+  objectAltitude?: number | null;
+  targetAltitude?: number | null;
   moonPhase?: MoonPhaseInfo | null;
   observerSnapshot?: SavedAlignmentSnapshotPoint | null;
   targetSnapshot?: SavedAlignmentSnapshotPoint | null;

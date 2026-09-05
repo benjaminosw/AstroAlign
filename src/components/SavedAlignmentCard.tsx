@@ -157,6 +157,25 @@ export default function SavedAlignmentCard({
             </div>
           </div>
 
+          {alignment.objectAltitude !== null && alignment.objectAltitude !== undefined && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Celestial altitude</p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums text-white">
+                  {alignment.objectAltitude.toFixed(2)}°
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Target altitude</p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums text-white">
+                  {alignment.targetAltitude !== null && alignment.targetAltitude !== undefined
+                    ? `${alignment.targetAltitude.toFixed(2)}°`
+                    : '—'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {targetName && <p className="text-xs text-slate-400">Target: {targetName}</p>}
 
           {alignment.shootingPositionSnapshot && (

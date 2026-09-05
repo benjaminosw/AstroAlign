@@ -132,6 +132,7 @@ export default function SavedLocationMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRefs = useRef<Map<string, MapLibreMarker>>(new Map());
+  const markerKindsRef = useRef<Map<string, SavedMapPoint['kind']>>(new Map());
   const initialViewportRef = useRef(initialViewport);
   const [mapFailed, setMapFailed] = useState(false);
   const [ready, setReady] = useState(false);
@@ -167,6 +168,7 @@ export default function SavedLocationMap({
     }
 
     const markers = markerRefs.current;
+    const markerKinds = markerKindsRef.current;
     let map: MapLibreMap;
     try {
       const style: StyleSpecification = getMapStyle('osm').style;
@@ -216,6 +218,7 @@ export default function SavedLocationMap({
       map.remove();
       mapRef.current = null;
       markers.clear();
+      markerKinds.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -243,6 +246,7 @@ export default function SavedLocationMap({
 
   function syncMarkers(map: MapLibreMap, currentTarget: SavedLocationMapProps['target'], currentLocation: SavedLocationMapProps['shootingLocation']) {
     const existing = markerRefs.current;
+    const kinds = markerKindsRef.current;
     const points = collectMapPoints(currentTarget, currentLocation);
     const desiredIds = new Set(points.map((point) => point.id));
 
@@ -250,12 +254,30 @@ export default function SavedLocationMap({
       if (!desiredIds.has(id)) {
         marker.remove();
         existing.delete(id);
+        kinds.delete(id);
       }
     }
 
     for (const point of points) {
       const existingMarker = existing.get(point.id);
-      if (!existingMarker) {
+      if (existingMarker && kinds.get(point.id) === point.kind) {
+        const position = existingMarker.getLngLat();
+        if (
+          Math.abs(position.lat - point.latitude) > 1e-9 ||
+          Math.abs(position.lng - point.longitude) > 1e-9
+        ) {
+          existingMarker.setLngLat([point.longitude, point.latitude]);
+        }
+        existingMarker.setDraggable(dataRef.current.editable);
+        const popup = existingMarker.getPopup?.();
+        if (popup) {
+          popup.setDOMContent(buildPointPopup(point.label, point.latitude, point.longitude));
+        }
+      } else {
+        if (existingMarker) {
+          existingMarker.remove();
+          existing.delete(point.id);
+        }
         const element = buildElementFor(point.kind);
         element.setAttribute('aria-label', point.label);
         const popup = new maplibregl.Popup({ closeButton: false, offset: 18 });
@@ -272,19 +294,7 @@ export default function SavedLocationMap({
           }
         });
         existing.set(point.id, created);
-      } else {
-        const position = existingMarker.getLngLat();
-        if (
-          Math.abs(position.lat - point.latitude) > 1e-9 ||
-          Math.abs(position.lng - point.longitude) > 1e-9
-        ) {
-          existingMarker.setLngLat([point.longitude, point.latitude]);
-        }
-        existingMarker.setDraggable(dataRef.current.editable);
-        const popup = existingMarker.getPopup?.();
-        if (popup) {
-          popup.setDOMContent(buildPointPopup(point.label, point.latitude, point.longitude));
-        }
+        kinds.set(point.id, point.kind);
       }
     }
   }

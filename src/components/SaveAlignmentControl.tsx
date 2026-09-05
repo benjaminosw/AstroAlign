@@ -23,6 +23,8 @@ export interface SaveAlignmentControlProps {
   alignmentError: number;
   toleranceDegrees?: number | null;
   withinTolerance?: boolean | null;
+  objectAltitude?: number | null;
+  targetAltitude?: number | null;
   moonPhase?: MoonPhaseInfo | null;
   targetId?: string | null;
   shootingSetupId?: string | null;
@@ -44,6 +46,8 @@ export default function SaveAlignmentControl({
   alignmentError,
   toleranceDegrees = null,
   withinTolerance = null,
+  objectAltitude = null,
+  targetAltitude = null,
   moonPhase = null,
   targetId = null,
   shootingSetupId = null,
@@ -70,6 +74,8 @@ export default function SaveAlignmentControl({
       alignmentError,
       toleranceDegrees: toleranceDegrees ?? null,
       withinTolerance: withinTolerance ?? null,
+      objectAltitude: objectAltitude ?? null,
+      targetAltitude: targetAltitude ?? null,
       moonPhase: moonPhase ?? null,
       targetId: targetId ?? null,
       shootingSetupId: shootingSetupId ?? null,

@@ -141,6 +141,7 @@ export default function AlignmentCalculator({
   const [sunAzimuth, setSunAzimuth] = useState<number | null>(null);
   const autoCalcTimerRef = useRef<number | null>(null);
   const autoCalcVersionRef = useRef(0);
+  const timeManuallyChangedRef = useRef(false);
 
   const { findTargetByCoordinates, boundTargetId } = useSavedLocations();
   const savedTargetForCurrent = findTargetByCoordinates(target.latitude, target.longitude);
@@ -167,7 +168,7 @@ export default function AlignmentCalculator({
       setSunAzimuth(null);
       return;
     }
-    if (timeZoneStatus === 'loading' || !timeZone || !date || !time) {
+    if (!timeZone || !date || !time) {
       setSunAzimuth(null);
       return;
     }
@@ -250,7 +251,7 @@ export default function AlignmentCalculator({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [observer.latitude, observer.longitude, target.latitude, target.longitude]);
+  }, [observer.latitude, observer.longitude, target.latitude, target.longitude, object, date, time, toleranceDegrees]);
 
   function submit() {
     if (locationInputError) {
@@ -301,16 +302,31 @@ export default function AlignmentCalculator({
     return new Date(Date.UTC(year, month - 1, day + deltaDays)).toISOString().slice(0, 10);
   }
 
-  function goToPreviousDay() {
-    if (date) {
-      setDate(shiftDate(date, -1));
+  function updateDay(deltaDays: number) {
+    if (!date) {
+      return;
+    }
+    const newDate = shiftDate(date, deltaDays);
+    setDate(newDate);
+    if (timeManuallyChangedRef.current) {
+      return;
+    }
+    if (!timeZone) {
+      return;
+    }
+    const times = findRiseSetLocalTimes(object, observer, newDate, timeZone);
+    const targetTime = riseSetMode === 'rise' ? times?.rise : times?.set;
+    if (targetTime) {
+      setTime(targetTime);
     }
   }
 
+  function goToPreviousDay() {
+    updateDay(-1);
+  }
+
   function goToNextDay() {
-    if (date) {
-      setDate(shiftDate(date, 1));
-    }
+    updateDay(1);
   }
 
   function riseSetLabel(type: 'rise' | 'set'): string {
@@ -347,6 +363,7 @@ export default function AlignmentCalculator({
     }
 
     setTime(targetTime);
+    timeManuallyChangedRef.current = false;
     setRiseSetMode((prev) => (prev === 'rise' ? 'set' : 'rise'));
   }
 
@@ -365,6 +382,11 @@ export default function AlignmentCalculator({
   function handleObserverMove(latitude: number, longitude: number) {
     onObserverChange('latitude', String(latitude));
     onObserverChange('longitude', String(longitude));
+  }
+
+  function handleTimeChange(value: string) {
+    timeManuallyChangedRef.current = true;
+    setTime(value);
   }
 
   function handleTargetMove(latitude: number, longitude: number) {
@@ -474,7 +496,7 @@ export default function AlignmentCalculator({
 
             <div>
               <span className="text-sm text-slate-300">Time</span>
-              <TimePicker label="Time" value={time ?? ''} onChange={setTime} />
+              <TimePicker label="Time" value={time ?? ''} onChange={handleTimeChange} />
               <button
                 type="button"
                 onClick={applyRiseSetTime}
@@ -597,6 +619,8 @@ export default function AlignmentCalculator({
                   alignmentError={snapshot.result.alignment.angularSeparation}
                   toleranceDegrees={snapshot.toleranceDegrees}
                   withinTolerance={snapshot.result.alignment.withinTolerance}
+                  objectAltitude={snapshot.result.object.altitude}
+                  targetAltitude={snapshot.result.target.altitude}
                   targetId={alignmentTargetId}
                   observer={observer}
                   target={target}
