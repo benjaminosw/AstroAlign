@@ -43,6 +43,7 @@ interface ShootingAreaMapProps {
   selectedId: string | null;
   onSelect: (_id: string) => void;
   panRequest?: { id: string; requestId: number } | null;
+  fitId?: number;
   initialViewport?: ShootingMapViewport | null;
   onViewportChange?: (_viewport: ShootingMapViewport) => void;
 }
@@ -90,6 +91,7 @@ export default function ShootingAreaMap({
   selectedId,
   onSelect,
   panRequest = null,
+  fitId = 0,
   initialViewport = null,
   onViewportChange = () => {}
 }: ShootingAreaMapProps) {
@@ -100,6 +102,7 @@ export default function ShootingAreaMap({
   const initialViewportRef = useRef(initialViewport);
   const [mapFailed, setMapFailed] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const handlersRef = useRef({ onTargetMove, onAreaCameraMove, onSelect, onViewportChange });
   handlersRef.current = { onTargetMove, onAreaCameraMove, onSelect, onViewportChange };
@@ -317,6 +320,8 @@ export default function ShootingAreaMap({
       } else {
         fitMap(map);
       }
+
+      setReady(true);
     });
 
     map.on('moveend', () => {
@@ -335,7 +340,7 @@ export default function ShootingAreaMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) {
+    if (!map || !ready) {
       return;
     }
 
@@ -375,11 +380,11 @@ export default function ShootingAreaMap({
       )
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, targetName, cameraMarkers, pathGeometry, zonePolyline, bearingLine, opportunities, selectedId]);
+  }, [target, targetName, cameraMarkers, pathGeometry, zonePolyline, bearingLine, opportunities, selectedId, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !panRequest) {
+    if (!map || !ready || !panRequest) {
       return;
     }
     const opportunity = dataRef.current.opportunities.find((item) => item.id === panRequest.id);
@@ -396,6 +401,15 @@ export default function ShootingAreaMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panRequest]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) {
+      return;
+    }
+    fitToTargetAndArea(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitId, ready]);
 
   function syncCameraMarkers(map: MapLibreMap, markers: AreaCameraMarker[]) {
     const existing = cameraMarkerRefs.current;
@@ -446,6 +460,18 @@ export default function ShootingAreaMap({
         }
       }
     }
+  }
+
+  function fitToTargetAndArea(map: MapLibreMap) {
+    const current = dataRef.current;
+    const bounds = new maplibregl.LngLatBounds(
+      [current.target.longitude, current.target.latitude],
+      [current.target.longitude, current.target.latitude]
+    );
+    for (const marker of current.cameraMarkers) {
+      bounds.extend([marker.longitude, marker.latitude]);
+    }
+    map.fitBounds(bounds, { padding: 70, maxZoom: 15, duration: 600 });
   }
 
   function fitMap(map: MapLibreMap) {

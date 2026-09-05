@@ -44,12 +44,12 @@ const TABS: Array<{ id: TabId; label: string; description: string }> = [
   {
     id: 'saved',
     label: 'Saved locations',
-    description: 'Manage saved targets, shooting locations, and setups — preserved between sessions.'
+    description: 'Manage saved targets, shooting locations, and setups.'
   },
   {
     id: 'alignments',
     label: 'Saved alignments',
-    description: 'Review alignments you have calculated or found and saved — preserved between sessions.'
+    description: 'Review alignments you have calculated or found and saved.'
   }
 ];
 

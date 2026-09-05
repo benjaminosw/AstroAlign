@@ -134,7 +134,7 @@ export default function AlignmentCalculator({
   const [error, setError] = useState<string | null>(null);
   const [lastCalculatedInputs, setLastCalculatedInputs] = useState<CalculatedInputs | null>(null);
   const [mapFitId, setMapFitId] = useState(0);
-  const [fitLocation, setFitLocation] = useState<'observer' | 'target'>('target');
+  const [fitLocation, setFitLocation] = useState<'both' | 'observer' | 'target'>('target');
   const [autoUpdating, setAutoUpdating] = useState(false);
   const [autoError, setAutoError] = useState<string | null>(null);
   const [locationInputError, setLocationInputError] = useState(false);
@@ -352,13 +352,13 @@ export default function AlignmentCalculator({
 
   function handleSelectObserverLandmark(selected: SelectedLandmark) {
     onSelectObserverLandmark(selected);
-    setFitLocation('observer');
+    setFitLocation('both');
     setMapFitId((id) => id + 1);
   }
 
   function handleSelectLandmark(selected: SelectedLandmark) {
     onSelectLandmark(selected);
-    setFitLocation('target');
+    setFitLocation('both');
     setMapFitId((id) => id + 1);
   }
 

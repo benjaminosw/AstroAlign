@@ -118,6 +118,7 @@ export default function FindShootingOpportunities({
   } = useShootingState();
   const abortController = useRef<AbortController | null>(null);
   const [panRequest, setPanRequest] = useState<{ id: string; requestId: number } | null>(null);
+  const [mapFitId, setMapFitId] = useState(0);
 
   const defaultArea = useMemo(() => buildDefaultArea(target, 'path'), [target]);
   const area = storedArea ?? defaultArea;
@@ -232,6 +233,7 @@ export default function FindShootingOpportunities({
 
   function handleSelectLandmark(selected: SelectedLandmark) {
     onSelectLandmark(selected);
+    setMapFitId((id) => id + 1);
   }
 
   function handleSelectFromList(id: string) {
@@ -438,6 +440,7 @@ export default function FindShootingOpportunities({
         selectedId={selectedId}
         onSelect={setSelectedId}
         panRequest={panRequest}
+        fitId={mapFitId}
         initialViewport={viewport}
         onViewportChange={setViewport}
       />

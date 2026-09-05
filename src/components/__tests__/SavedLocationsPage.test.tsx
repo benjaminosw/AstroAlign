@@ -238,4 +238,21 @@ describe('SavedLocationsPage', () => {
     expect(onOpenSetup).toHaveBeenCalledTimes(1);
     expect(onOpenSetup).toHaveBeenCalledWith(expect.objectContaining({ id: 'setup-1' }));
   });
+
+  it('recentres the map when a saved item is clicked', async () => {
+    await seedDatabase();
+    renderPage();
+
+    const targetCard = await screen.findByTestId('saved-target-card-target-1');
+    const map = screen.getByTestId('mock-saved-locations-map');
+    const initialFit = map.getAttribute('data-fit-id');
+
+    fireEvent.click(targetCard);
+    expect(map.getAttribute('data-fit-id')).not.toBe(initialFit);
+
+    const locationCard = screen.getByTestId('saved-location-card-location-1');
+    const previousFit = map.getAttribute('data-fit-id');
+    fireEvent.click(locationCard);
+    expect(map.getAttribute('data-fit-id')).not.toBe(previousFit);
+  });
 });

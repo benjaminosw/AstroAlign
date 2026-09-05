@@ -432,7 +432,7 @@ describe('AlignmentCalculator workspace', () => {
     vi.useRealTimers();
   });
 
-  it('searching an observer location updates the observer marker and fits the map to it', async () => {
+  it('searching an observer location updates the observer marker and refits the whole map', async () => {
     vi.useFakeTimers();
     vi.mocked(activeGeocoder.search).mockResolvedValue([
       {
@@ -460,7 +460,7 @@ describe('AlignmentCalculator workspace', () => {
     expect(mapProp('data-observer-lat')).toBe('1.3099');
     expect(mapProp('data-observer-lon')).toBe('103.7781');
     expect(mapProp('data-target-lat')).toBe(String(DEFAULT_TARGET.latitude));
-    expect(mapProp('data-fit-target')).toBe('observer');
+    expect(mapProp('data-fit-target')).toBe('both');
     expect(mapProp('data-fit-id')).toBe('1');
     vi.useRealTimers();
   });

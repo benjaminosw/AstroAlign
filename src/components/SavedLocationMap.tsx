@@ -134,6 +134,7 @@ export default function SavedLocationMap({
   const markerRefs = useRef<Map<string, MapLibreMarker>>(new Map());
   const initialViewportRef = useRef(initialViewport);
   const [mapFailed, setMapFailed] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const handlersRef = useRef({ onMarkerMove, onViewportChange });
   handlersRef.current = { onMarkerMove, onViewportChange };
@@ -202,6 +203,8 @@ export default function SavedLocationMap({
       } else {
         fitMap(map);
       }
+
+      setReady(true);
     });
 
     map.on('moveend', () => {
@@ -219,7 +222,7 @@ export default function SavedLocationMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) {
+    if (!map || !ready) {
       return;
     }
     syncMarkers(map, dataRef.current.target, dataRef.current.shootingLocation);
@@ -227,16 +230,16 @@ export default function SavedLocationMap({
     const pathSource = map.getSource('path-line') as GeoJSONSource | undefined;
     pathSource?.setData(lineFeature(pathPolyline ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapPoints, pathPolyline, editable, shootingLocation, target]);
+  }, [mapPoints, pathPolyline, editable, shootingLocation, target, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) {
+    if (!map || !ready) {
       return;
     }
     fitMap(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitId]);
+  }, [fitId, ready]);
 
   function syncMarkers(map: MapLibreMap, currentTarget: SavedLocationMapProps['target'], currentLocation: SavedLocationMapProps['shootingLocation']) {
     const existing = markerRefs.current;

@@ -20,6 +20,7 @@ vi.mock('../ShootingAreaMap', () => ({
     onTargetMove: (_lat: number, _lng: number) => void;
     onAreaCameraMove: (_id: string, _lat: number, _lng: number) => void;
     panRequest?: { id: string; requestId: number } | null;
+    fitId?: number;
   }) => (
     <div
       data-testid="mock-shooting-area-map"
@@ -32,6 +33,7 @@ vi.mock('../ShootingAreaMap', () => ({
       data-zone-start={props.highlight?.zoneStartKm ?? ''}
       data-zone-end={props.highlight?.zoneEndKm ?? ''}
       data-pan-request-id={props.panRequest?.id ?? ''}
+      data-fit-id={props.fitId ?? ''}
     >
       <button onClick={() => props.onTargetMove(1.5, 104.2)}>simulate-target-move</button>
       <button onClick={() => props.onAreaCameraMove('start', 1.31, 103.88)}>simulate-area-move</button>
@@ -48,6 +50,7 @@ vi.mock('../../lib/geocoding/index', () => ({
 }));
 
 import { findShootingOpportunities } from '../../lib/opportunities/findShootingOpportunities';
+import { activeGeocoder } from '../../lib/geocoding/index';
 
 function opportunity(id: string, overrides: Partial<ShootingOpportunity> = {}): ShootingOpportunity {
   return {
@@ -247,6 +250,23 @@ describe('FindShootingOpportunities workspace', () => {
     expect(mapElement().getAttribute('data-zone-start')).toBe('0.7');
     expect(mapElement().getAttribute('data-zone-end')).toBe('1.1');
     expect(mapElement().getAttribute('data-pan-request-id')).toBe('opp-2');
+  });
+
+  it('requests a map recentre when a search result is selected', async () => {
+    vi.mocked(activeGeocoder.search).mockResolvedValue([
+      { id: 'mbs', name: 'Marina Bay Sands', formattedAddress: '', latitude: 1.2834, longitude: 103.8607 }
+    ]);
+    render(<Harness />);
+
+    const initialFit = mapElement().getAttribute('data-fit-id');
+    const input = screen.getByRole('combobox', { name: /landmark/i });
+    fireEvent.change(input, { target: { value: 'Marina Bay Sands' } });
+    fireEvent.click(screen.getByRole('button', { name: /search landmark/i }));
+    await screen.findByText('Marina Bay Sands');
+
+    fireEvent.mouseDown(screen.getByText('Marina Bay Sands'));
+
+    expect(mapElement().getAttribute('data-fit-id')).not.toBe(initialFit);
   });
 
   it('reports an error when the search fails', async () => {

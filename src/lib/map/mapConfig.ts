@@ -9,6 +9,7 @@ export interface MapStyleConfig {
 
 const osmStyle: StyleSpecification = {
   version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     osm: {
       type: 'raster',

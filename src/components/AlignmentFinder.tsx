@@ -99,7 +99,7 @@ export default function AlignmentFinder({
   const [lastSearchedInputs, setLastSearchedInputs] = useState<SearchedInputs | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [mapFitId, setMapFitId] = useState(0);
-  const [fitLocation, setFitLocation] = useState<'observer' | 'target'>('target');
+  const [fitLocation, setFitLocation] = useState<'both' | 'observer' | 'target'>('target');
   const [locationInputError, setLocationInputError] = useState(false);
   const abortController = useRef<AbortController | null>(null);
 
@@ -305,13 +305,13 @@ export default function AlignmentFinder({
 
   function handleSelectObserverLandmark(selected: SelectedLandmark) {
     onSelectObserverLandmark(selected);
-    setFitLocation('observer');
+    setFitLocation('both');
     setMapFitId((id) => id + 1);
   }
 
   function handleSelectLandmark(selected: SelectedLandmark) {
     onSelectLandmark(selected);
-    setFitLocation('target');
+    setFitLocation('both');
     setMapFitId((id) => id + 1);
   }
 
