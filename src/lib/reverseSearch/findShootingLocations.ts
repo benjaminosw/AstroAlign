@@ -4,9 +4,12 @@ import { formatLocalDateTimeFromUtc } from '../timezone/formatLocalDateTime';
 import { isValidIsoDate, isValidTolerance } from '../utils/searchUtils';
 import { findRiseSetEvent } from '../astronomy/riseSet';
 import { collectFullMoonInstants, isWithinFullMoonWindow } from '../astronomy/lunarPhase';
+import { findAltitudeCrossings } from '../astronomy/altitudeCrossing';
 import { generateCandidates } from './generateCandidates';
 import { scoreCandidate } from './scoreCandidate';
 import { oppositeBearing } from '../geometry/bearing';
+import { greatCircleDistanceKm } from '../geometry/distance';
+import { targetAltitude } from '../geometry/altitude';
 
 function assertValidRadius(radiusKm: number) {
   if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
@@ -78,7 +81,26 @@ export async function findShootingLocations(input: ReverseSearchInput): Promise<
       throw new Error('Search canceled');
     }
 
-    const score = scoreCandidate(input.target, { ...point, elevation: 0 }, event.azimuth, input.toleranceDegrees);
+    const camera = { ...point, elevation: 0 };
+
+    let referenceAzimuth = event.azimuth;
+
+    if (!(camera.elevation === 0 && input.target.elevation === 0)) {
+      const cameraDistanceKm = greatCircleDistanceKm(
+        camera.latitude,
+        camera.longitude,
+        input.target.latitude,
+        input.target.longitude
+      );
+      const cameraTargetAltitude = targetAltitude(camera, input.target, cameraDistanceKm);
+      const crossings = findAltitudeCrossings(input.object, camera, cameraTargetAltitude, dayStartUtc, dayEndUtc);
+      const matching = crossings.find((crossing) => crossing.direction === input.eventType);
+      if (matching) {
+        referenceAzimuth = matching.azimuth;
+      }
+    }
+
+    const score = scoreCandidate(input.target, camera, referenceAzimuth, input.toleranceDegrees);
 
     if (!score.withinTolerance) {
       continue;
